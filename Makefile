@@ -14,9 +14,11 @@ all: git daikinac
 
 SQLlib/sqllib.o: SQLlib/sqllib.c
 	make -C SQLlib
+AXL/axl.o: AXL/axl.c
+	make -C AXL
 
-daikinac: daikinac.c SQLlib/sqllib.o
-	cc -O -o $@ $< ${OPTS} -lpopt ${LIBMQTT} -ISQLlib SQLlib/sqllib.o -lcurl -DSQLLIB
+daikinac: daikinac.c SQLlib/sqllib.o AXL/axl.o
+	cc -O -o $@ $< ${OPTS} -lpopt ${LIBMQTT} -ISQLlib SQLlib/sqllib.o -lcurl -DSQLLIB -IAXL AXL/axl.o
 
 git:
 	git submodule update --init
