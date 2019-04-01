@@ -156,7 +156,12 @@ main (int argc, const char *argv[])
          if (!result)
             curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &code);
          if ((code / 100) != 2)
-            errx (1, "Result %ld for %s\n", code, url);
+         {
+            warnx ("Result %ld for %s\n", code, url);
+            if (reply)
+               free (reply);
+            return NULL;
+         }
          if (sqldebug)
             fprintf (stderr, "Request:\t%s\nReply:\t%s\n", url, reply);
          free (url);
@@ -210,7 +215,7 @@ main (int argc, const char *argv[])
          }
       }
       // Get status
-      void getstatus (void)
+      int getstatus (void)
       {
          // Reset
          changed = 0;
@@ -224,6 +229,7 @@ main (int argc, const char *argv[])
          if (asprintf (&url, "http://%s/aircon/get_control_info", ip) < 0)
             errx (1, "malloc");
          control = get (url);
+         return sensor && control;
       }
       void freestatus (void)
       {
@@ -344,14 +350,16 @@ main (int argc, const char *argv[])
             l = msg->payloadlen;
             char *val = malloc (l + 1);
             memcpy (val, msg->payload, l);
-            getstatus ();
-            updatestatus ();
-            val[l] = 0;
+            if (getstatus ())
+            {
+               updatestatus ();
+               val[l] = 0;
 #define	c(x,t,v) if(!strcmp(#x,topic)){if(val&&(!x||strcmp(x,val))){if(x)free(x);x=strdup(val);changed=1;}}
-            controlfields
+               controlfields
 #undef c
-               if (changed)
-               updatesettings (sensor, control);
+                  if (changed)
+                  updatesettings (sensor, control);
+            }
             free (val);
             freestatus ();
          }
@@ -370,24 +378,26 @@ main (int argc, const char *argv[])
             {                   // stat
                next += mqttreport;
                to = next - now;
-               getstatus ();
-               updatedb ();
-               void check (char *tag, char *val)
+               if (getstatus ())
                {
-                  // Only some things we report
-                  if (!strncmp (tag, "b_", 2)
-                      || (strncmp (tag, "f_", 2) && !strstr (tag, "pow") && !strstr (tag, "temp") && strcmp (tag, "mode")
-                          && !strstr (tag, "hum") && strcmp (tag, "adv")))
-                     return;
-                  char *topic = NULL;
-                  asprintf (&topic, "%s/%s/%s", mqttstat, mqtttopic, tag);
-                  e = mosquitto_publish (mqtt, NULL, topic, strlen (val), val, 0, 0);
-                  if (sqldebug)
-                     warnx ("Publish %s %s", topic, val);
-                  free (topic);
+                  updatedb ();
+                  void check (char *tag, char *val)
+                  {
+                     // Only some things we report
+                     if (!strncmp (tag, "b_", 2)
+                         || (strncmp (tag, "f_", 2) && !strstr (tag, "pow") && !strstr (tag, "temp") && strcmp (tag, "mode")
+                             && !strstr (tag, "hum") && strcmp (tag, "adv")))
+                        return;
+                     char *topic = NULL;
+                     asprintf (&topic, "%s/%s/%s", mqttstat, mqtttopic, tag);
+                     e = mosquitto_publish (mqtt, NULL, topic, strlen (val), val, 0, 0);
+                     if (sqldebug)
+                        warnx ("Publish %s %s", topic, val);
+                     free (topic);
+                  }
+                  scan (sensor, check);
+                  scan (control, check);
                }
-               scan (sensor, check);
-               scan (control, check);
                freestatus ();
             }
             if (to < 1)
@@ -403,47 +413,48 @@ main (int argc, const char *argv[])
 #endif
       while ((ip = poptGetArg (optCon)))
       {                         // Process for each IP
-         getstatus ();
-         updatestatus (sensor, control);
+         if (getstatus ())
+         {
+            updatestatus (sensor, control);
 
-         if (hotcold)
-         {                      // Temp control
-            int oldmode = atoi (mode);
-            if (oldmode != 2 && oldmode != 6)
-            {
-               int newmode = 0;
-               if (atemp && *atemp)
-               {                // Use air temp as reference
-                  double air = strtod (atemp, NULL);
-                  if (air >= temp + adelta)
-                     newmode = 3;       // force cool
-                  else if (air < temp - adelta)
-                     newmode = 4;       // force heat
-               } else
-               {                // Use outside or inside temp as reference
-                  if (htemp < temp - hdelta)
-                     newmode = 4;       // force heat
-                  else if (htemp > temp + hdelta)
-                     newmode = 3;       // force cool
-                  else if (otemp < temp - odelta)
-                     newmode = 4;       // force heat
-                  else if (otemp > temp + odelta)
-                     newmode = 4;       // force heat
-               }
-               if (newmode && newmode != oldmode)
+            if (hotcold)
+            {                   // Temp control
+               int oldmode = atoi (mode);
+               if (oldmode != 2 && oldmode != 6)
                {
-                  if (asprintf (&mode, "%d", newmode) < 0)
-                     errx (1, "malloc");
-                  changed = 1;
+                  int newmode = 0;
+                  if (atemp && *atemp)
+                  {             // Use air temp as reference
+                     double air = strtod (atemp, NULL);
+                     if (air >= temp + adelta)
+                        newmode = 3;    // force cool
+                     else if (air < temp - adelta)
+                        newmode = 4;    // force heat
+                  } else
+                  {             // Use outside or inside temp as reference
+                     if (htemp < temp - hdelta)
+                        newmode = 4;    // force heat
+                     else if (htemp > temp + hdelta)
+                        newmode = 3;    // force cool
+                     else if (otemp < temp - odelta)
+                        newmode = 4;    // force heat
+                     else if (otemp > temp + odelta)
+                        newmode = 4;    // force heat
+                  }
+                  if (newmode && newmode != oldmode)
+                  {
+                     if (asprintf (&mode, "%d", newmode) < 0)
+                        errx (1, "malloc");
+                     changed = 1;
+                  }
                }
             }
+
+            if (changed)
+               updatesettings (sensor, control);
+            updatedb (sensor, control);
          }
-
-         if (changed)
-            updatesettings (sensor, control);
-         updatedb (sensor, control);
          freestatus ();
-
       }
       poptFreeContext (optCon);
 #ifdef SQLLIB
