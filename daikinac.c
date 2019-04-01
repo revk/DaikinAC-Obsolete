@@ -47,11 +47,12 @@ main (int argc, const char *argv[])
 #ifdef SQLLIB
   const char *db = NULL;
   const char *svgdate = NULL;
-  int svgl = 0;			// Low C
-  int svgc = 20;		// Per C spacing height
+  int svgl = 10;			// Low C
+  int svgt = 35;			// High C
+  int svgc = 25;		// Per C spacing height
   int svgh = 60;		// Per hour spacing width
   int svgwidth = 24 * svgh;
-  int svgheight = 30 * svgc;
+  int svgheight = (svgt-svgl) * svgc;
 #endif
   const char *table = "daikin";
   char *atemp = NULL;
@@ -217,21 +218,21 @@ main (int argc, const char *argv[])
 		if (v)
 		  {
 		    d = strtod (v, NULL);
-		    fprintf (atemp, "%c%d,%d", atempm, x, (int) (svgheight - (d + svgl) * svgc));
+		    fprintf (atemp, "%c%d,%d", atempm, x, (int) (svgheight - (d - svgl) * svgc));
 		    atempm = 'L';
 		  }
 		v = sql_col (res, "htemp");
 		if (v)
 		  {
 		    d = strtod (v, NULL);
-		    fprintf (htemp, "%c%d,%d", htempm, x, (int) (svgheight - (d + svgl) * svgc));
+		    fprintf (htemp, "%c%d,%d", htempm, x, (int) (svgheight - (d - svgl) * svgc));
 		    htempm = 'L';
 		  }
 		v = sql_col (res, "otemp");
 		if (v)
 		  {
 		    d = strtod (v, NULL);
-		    fprintf (otemp, "%c%d,%d", otempm, x, (int) (svgheight - (d + svgl) * svgc));
+		    fprintf (otemp, "%c%d,%d", otempm, x, (int) (svgheight - (d - svgl) * svgc));
 		    otempm = 'L';
 		  }
 		v = sql_col (res, "stemp");
@@ -251,9 +252,9 @@ main (int argc, const char *argv[])
 		  {
 		    d = strtod (v, NULL);
 		    if (mode == 3)
-		      fprintf (cool, "%c%d %d", stempref < 0 ? 'M' : 'L', x, lasty=(int) (svgheight - (d + svgl) * svgc));
+		      fprintf (cool, "%c%d %d", stempref < 0 ? 'M' : 'L', x, lasty=(int) (svgheight - (d - svgl) * svgc));
 		    if (mode == 4)
-		      fprintf (heat, "%c%d %d", stempref < 0 ? 'M' : 'L', x, lasty=(int) (svgheight - (d + svgl) * svgc));
+		      fprintf (heat, "%c%d %d", stempref < 0 ? 'M' : 'L', x, lasty=(int) (svgheight - (d - svgl) * svgc));
 		    if (stempref < 0)
 		      stempref = x;
 		  }
@@ -292,7 +293,7 @@ main (int argc, const char *argv[])
 	    for (y = svgc; y < svgheight; y += svgc)
 	      {
 		xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@d", "M0 %dh%d", svgheight - y, svgwidth);
-		xml_t t = xml_addf (svg, "+text", "%d℃", (y - svgl) / svgc);
+		xml_t t = xml_addf (svg, "+text", "%d℃", y  / svgc+svgl);
 		xml_addf (t, "@x", "%d", 0);
 		xml_addf (t, "@y", "%d", svgheight - y);
 		xml_add (t, "@alignment-baseline", "middle");
