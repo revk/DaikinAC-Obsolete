@@ -221,10 +221,16 @@ main (int argc, const char *argv[])
       // Get status
       int getstatus (void)
       {
-         static char *fn = NULL;
-         if (asprintf (&fn, "/var/run/%s", ip) < 0)
+         char *fn = NULL;
+         if (asprintf (&fn, "/tmp/daikinac-%s", ip) < 0)
             errx (1, "malloc");
          lock = open (fn, O_CREAT, 0777);
+         if (lock < 0)
+         {
+            warn ("Cannot make lock file %s", fn);
+            free (fn);
+            return 0;           // Uh?
+         }
          free (fn);
          flock (lock, LOCK_EX);
          // Reset
