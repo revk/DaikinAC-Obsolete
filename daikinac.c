@@ -194,7 +194,7 @@ main (int argc, const char *argv[])
 	    xml_addf (svg, "@width", "%d", svgwidth);
 	    xml_addf (svg, "@height", "%d", svgheight);
 	    // Graph data
-	    int stempref = -1, lastmode = 0, lasty=0;
+	    int stempref = -1, lastmode = 0, lasty=0,x=0;
 	    size_t atemplen = 0, htemplen = 0, otemplen = 0, heatlen = 0, coollen = 0;;
 	    char *atempbuf = NULL, *htempbuf = NULL, *otempbuf = NULL, *heatbuf = NULL, *coolbuf = NULL;
 	    char atempm = 'M', htempm = 'M', otempm = 'M';
@@ -211,7 +211,7 @@ main (int argc, const char *argv[])
 		char *v = sql_col (res, "Updated");
 		if (strlen (v) < 19)
 		  continue;
-		int x = (atoi (v + 11) * 3600 + atoi (v + 14) * 60 + atoi (v + 17)) * svgh / 3600;
+		x = (atoi (v + 11) * 3600 + atoi (v + 14) * 60 + atoi (v + 17)) * svgh / 3600;
 		double d;
 		v = sql_col (res, "atemp");
 		if (v)
@@ -259,6 +259,10 @@ main (int argc, const char *argv[])
 		  }
 		lastmode = mode;
 	      }
+		    if (lastmode == 3)
+		      fprintf (cool, "L%d %dL%d %dL%d %dZ", x,lasty,x, 0, stempref, 0);
+		    if (lastmode == 4)
+		      fprintf (heat, "L%d %dL%d %dL%d %dZ", x,lasty,x, svgheight, stempref, svgheight);
 	    fclose (atemp);
 	    fclose (htemp);
 	    fclose (otemp);
@@ -274,6 +278,7 @@ main (int argc, const char *argv[])
 	    free (otempbuf);
 	    free (heatbuf);
 	    free (coolbuf);
+	    {
 	    // Time of day and headings
 	    int x, y;
 	    for (x = 0; x < svgwidth; x += svgh)
@@ -292,6 +297,7 @@ main (int argc, const char *argv[])
 		xml_addf (t, "@y", "%d", svgheight - y);
 		xml_add (t, "@alignment-baseline", "middle");
 	      }
+	    }
 	    sql_free_result (res);
 	    sql_close (&sql);
 	    xml_write (stdout, svg);
