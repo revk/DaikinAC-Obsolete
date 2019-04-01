@@ -8,6 +8,9 @@
 #include <syslog.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/file.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -214,9 +217,16 @@ main (int argc, const char *argv[])
             p = n;
          }
       }
+      int lock = -1;
       // Get status
       int getstatus (void)
       {
+         static char *fn = NULL;
+         if (asprintf (&fn, "/var/run/%s", ip) < 0)
+            errx (1, "malloc");
+         lock = open (fn, O_CREAT, 0777);
+         free (fn);
+         flock (lock, LOCK_EX);
          // Reset
          changed = 0;
          otemp = 0;
@@ -233,10 +243,22 @@ main (int argc, const char *argv[])
       }
       void freestatus (void)
       {
+         if (lock >= 0)
+         {
+            flock (lock, LOCK_UN);
+            close (lock);
+            lock = -1;
+         }
          if (sensor)
+         {
             free (sensor);
+            sensor = NULL;
+         }
          if (control)
+         {
             free (control);
+            control = NULL;
+         }
 #define	c(x,t,v) if(x)free(x);x=NULL;
          controlfields
 #undef c
