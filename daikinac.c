@@ -22,7 +22,7 @@
 #else
 int sqldebug = 0;               // General debug
 #endif
-#ifdef MQTT
+#ifdef LIBMQTT
 #include <mosquitto.h>
 #endif
 
@@ -57,7 +57,7 @@ main (int argc, const char *argv[])
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0,               // Auto delta external (main criteria for hot-cold control)
       adelta = 1;               // Auto air temp delta
-#ifdef MQTT
+#ifdef LIBMQTT
    int mqttreport = 60;
    const char *mqttid = NULL;
    const char *mqtthost = NULL;
@@ -76,7 +76,7 @@ main (int argc, const char *argv[])
 #ifdef SQLLIB
          {"log", 'l', POPT_ARG_STRING, &db, 0, "Log", "database"},
 #endif
-#ifdef MQTT
+#ifdef LIBMQTT
          {"mqtt-host", 'h', POPT_ARG_STRING, &mqtthost, 0, "MQTT host", "hostname"},
          {"mqtt-id", 0, POPT_ARG_STRING, &mqttid, 0, "MQTT id", "id"},
          {"mqtt-user", 0, POPT_ARG_STRING, &mqttuser, 0, "MQTT user", "username"},
@@ -300,7 +300,7 @@ main (int argc, const char *argv[])
 #endif
       }
 
-#ifdef MQTT
+#ifdef LIBMQTT
       if (mqtthost)
       {                         // Handling MQTT only
          ip = poptGetArg (optCon);
