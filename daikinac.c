@@ -44,6 +44,10 @@ main (int argc, const char *argv[])
 #define c(x,t,v) char *set##x=NULL;     // Args
    controlfields;
 #undef	c
+   // AC constants
+   double maxtemp = 30;         // Aircon temp range allowed
+   double mintemp = 18;
+   double hysteresis = 1;       // Assume hysteresis in aircon to set hysteresis
 #ifdef SQLLIB
    const char *db = NULL;
    const char *svgdate = NULL;
@@ -68,10 +72,7 @@ main (int argc, const char *argv[])
       dolock = 0;
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0;               // Auto delta external (main criteria for hot-cold control)
-   double maxtemp = 30;         // Aircon temp range allowed
-   double mintemp = 18;
    double flip = 1;             // auto hot/cold flip
-   double overshoot = 1;        // Assume hysteresis in aircon to set overshoot
 #ifdef LIBMQTT
    int mqttperiod = 60;
    const char *mqttid = NULL;
@@ -513,8 +514,8 @@ main (int argc, const char *argv[])
          int oldmode = atoi (mode);
          if (oldmode != 2 && oldmode != 6)
          {
-         double oldtemp = temp;
-         double newtemp = temp;
+            double oldtemp = temp;
+            double newtemp = temp;
             int newmode = 0;
             if (atemp)
             {                   // Use air temp as reference
@@ -525,9 +526,9 @@ main (int argc, const char *argv[])
                else if (air < temp - flip)
                   newmode = 4;  // force heat
                if (air > temp)
-                  newtemp = temp - overshoot;
+                  newtemp = temp - hysteresis;
                else
-                  newtemp = temp + overshoot;
+                  newtemp = temp + hysteresis;
             } else
             {                   // Use outside or inside temp as reference
                if (htemp < temp - hdelta)
