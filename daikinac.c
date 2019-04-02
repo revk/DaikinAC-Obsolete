@@ -546,7 +546,7 @@ main (int argc, const char *argv[])
                {                // Heat
                   if (air >= temp)
                      newtemp = temp - hysteresis;       // Stop heating
-                  else if (air >= temp - m)
+                  else if (air >= temp - m * 2)
                      newtemp = temp - (air - temp + m) * hysteresis / m;        // try to avoid big overshoot
                   else
                      newtemp = temp + hysteresis;       // Heat
@@ -554,7 +554,7 @@ main (int argc, const char *argv[])
                {                // Cool
                   if (air <= temp)
                      newtemp = temp + hysteresis;       // Stop cooling
-                  else if (air <= temp + m)
+                  else if (air <= temp + m * 2)
                      newtemp = temp + (temp - m - air) * hysteresis / m;        // try to avoid big overshoot
                   else
                      newtemp = temp - hysteresis;       // Cool
