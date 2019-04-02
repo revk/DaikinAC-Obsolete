@@ -337,8 +337,8 @@ main (int argc, const char *argv[])
             fclose (dt1);
             fclose (heat);
             fclose (cool);
-            xml_addf (svg, "+path@fill=red@stroke=none@opacity=0.5@d", heatbuf);
-            xml_addf (svg, "+path@fill=blue@stroke=none@opacity=0.5@d", coolbuf);
+            xml_addf (svg, "+path@fill=red@stroke=none@opacity=0.25@d", heatbuf);
+            xml_addf (svg, "+path@fill=blue@stroke=none@opacity=0.25@d", coolbuf);
             xml_addf (svg, "+path@fill=none@stroke=red@d", atempbuf);
             xml_addf (svg, "+path@fill=none@stroke=green@d", htempbuf);
             xml_addf (svg, "+path@fill=none@stroke=blue@d", otempbuf);
