@@ -653,6 +653,21 @@ main (int argc, const char *argv[])
                controlfields;
                c (atemp, atemp, atemp);
 #undef c
+               if (topic[0] == 'd' && topic[1] == 't' && isdigit (topic[2]) && !topic[3])
+               {                // Special case, setting dtN means setting a mode and stemp
+                  char *url = NULL;
+                  size_t len = 0;
+                  FILE *o = open_memstream (&url, &len);
+                  fprintf (o, "http://%s/aircon/set_control_info?", ip);
+#define c(x,t,v) if(!strcmp(#x,"stemp"))fprintf(o,"%s=%s&",#x,val); else if(!strcmp(#x,"mode"))fprintf(o,"%s=%s&",#x,topic+2); else fprintf(o,"%s=%s&",#x,x);
+                  controlfields
+#undef c
+                  fclose (o);
+                  url[--len] = 0;
+                  char *ok = get (url);
+                  free (ok);
+                  changed = 1;  // Force setting back to right mode
+               }
                if (changed)
                   updatesettings (sensor, control);
             }
@@ -735,6 +750,7 @@ main (int argc, const char *argv[])
          }
          freestatus ();
       }
+
       poptFreeContext (optCon);
 #ifdef SQLLIB
       if (db)
@@ -745,5 +761,6 @@ main (int argc, const char *argv[])
       }
 #endif
    }
+
    return 0;
 }
