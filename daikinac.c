@@ -74,6 +74,7 @@ main (int argc, const char *argv[])
       odelta = 0;               // Auto delta external (main criteria for hot-cold control)
    double flip = 1;             // auto hot/cold flip
    double fanauto = 2;          // temp low switch to auto fan
+   double margin = 0.5;         // Don't overshoot hysteresis if within this margin
 #ifdef LIBMQTT
    int mqttperiod = 60;
    const char *mqttid = NULL;
@@ -491,13 +492,13 @@ main (int argc, const char *argv[])
 #undef c
             if (!strcmp (tag, "f_rate"))
                frate = *val;
-            if (!strcmp (tag, "otemp"))
+	    else if (!strcmp (tag, "otemp"))
                otemp = strtod (val, NULL);
-            if (!strcmp (tag, "htemp"))
+	    else if (!strcmp (tag, "htemp"))
                htemp = strtod (val, NULL);
-            if (!strcmp (tag, "stemp"))
+	    else if (!strcmp (tag, "stemp"))
                temp = strtod (val, NULL);
-            if (!strcmp (tag, "dt1"))
+	    else if (!strcmp (tag, "dt1"))
                dt1 = strtod (val, NULL);
          }
          scan (sensor, check);
@@ -525,19 +526,32 @@ main (int argc, const char *argv[])
             char newfrate = frate;
             double oldtemp = temp;
             double newtemp = temp;
-            int newmode = 0;
+            int newmode = oldmode;
             if (atemp)
             {                   // Use air temp as reference
-               temp = dt1;      // Reference is auto temp
+               temp = dt1;      // Reference/target is auto temp as we change heat/cool temp a bit
                double air = strtod (atemp, NULL);
                if (air >= temp + flip)
                   newmode = 3;  // force cool
                else if (air < temp - flip)
                   newmode = 4;  // force heat
-               if (air > temp)
-                  newtemp = temp - hysteresis;
-               else
-                  newtemp = temp + hysteresis;
+               if (newmode == 4)
+               {                // Heat
+                  if (air >= temp)
+                     newtemp = temp - hysteresis; // Stop heating
+                  else if (air >= temp - margin)
+                     newtemp = temp; // try to avoid big overshoot
+                  else
+                     newtemp = temp + hysteresis; // Heat
+               } else
+               {                // Cool
+                  if (air <= temp)
+                     newtemp = temp + hysteresis; // Stop cooling
+                  else if (air <= temp + margin)
+                     newtemp = temp; // try to avoid big overshoot
+                  else
+                     newtemp = temp - hysteresis; // Cool
+               }
                if (newfrate == 'B' &&   //
                    ((newmode == 3 && air > temp + fanauto) || (newmode == 4 && air < temp - fanauto)))
                   newfrate = 'A';       // Switch to auto mode
