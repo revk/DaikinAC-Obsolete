@@ -47,7 +47,7 @@ main (int argc, const char *argv[])
    // AC constants
    double maxtemp = 30;         // Aircon temp range allowed
    double mintemp = 18;
-   double hysteresis = 1;       // Assume hysteresis in aircon to set hysteresis
+   double hysteresis = 2;       // Assume hysteresis in aircon to set hysteresis
 #ifdef SQLLIB
    const char *db = NULL;
    const char *svgdate = NULL;
@@ -72,7 +72,7 @@ main (int argc, const char *argv[])
       dolock = 0;
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0;               // Auto delta external (main criteria for hot-cold control)
-   double flip = 1;             // auto hot/cold flip
+   double flip = 1.5;             // auto hot/cold flip
    double fanauto = 2;          // temp low switch to auto fan
    double margin = 0.5;         // Don't overshoot hysteresis if within this margin
 #ifdef LIBMQTT
@@ -388,7 +388,8 @@ main (int argc, const char *argv[])
       double otemp = 0,
          htemp = 0,
          temp = 0,
-         dt1 = 0;
+         dt1 = 0,
+         mompow = 0;
       char frate = 0;
       char *sensor = NULL;
       char *control = NULL;
@@ -446,6 +447,7 @@ main (int argc, const char *argv[])
          htemp = 0;
          temp = 0;
          frate = 0;
+         mompow = 0;
          char *url;
          if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
             errx (1, "malloc");
@@ -492,14 +494,16 @@ main (int argc, const char *argv[])
 #undef c
             if (!strcmp (tag, "f_rate"))
                frate = *val;
-	    else if (!strcmp (tag, "otemp"))
+            else if (!strcmp (tag, "otemp"))
                otemp = strtod (val, NULL);
-	    else if (!strcmp (tag, "htemp"))
+            else if (!strcmp (tag, "htemp"))
                htemp = strtod (val, NULL);
-	    else if (!strcmp (tag, "stemp"))
+            else if (!strcmp (tag, "stemp"))
                temp = strtod (val, NULL);
-	    else if (!strcmp (tag, "dt1"))
+            else if (!strcmp (tag, "dt1"))
                dt1 = strtod (val, NULL);
+            else if (!strcmp (tag, "mompow"))
+               mompow = atoi (val);
          }
          scan (sensor, check);
          scan (control, check);
@@ -531,6 +535,9 @@ main (int argc, const char *argv[])
             {                   // Use air temp as reference
                temp = dt1;      // Reference/target is auto temp as we change heat/cool temp a bit
                double air = strtod (atemp, NULL);
+               double m = margin;
+               if (mompow > 4)
+                  m *= 2;       // Bigger margin if power high
                if (air >= temp + flip)
                   newmode = 3;  // force cool
                else if (air < temp - flip)
@@ -538,19 +545,19 @@ main (int argc, const char *argv[])
                if (newmode == 4)
                {                // Heat
                   if (air >= temp)
-                     newtemp = temp - hysteresis; // Stop heating
-                  else if (air >= temp - margin)
-                     newtemp = temp; // try to avoid big overshoot
+                     newtemp = temp - hysteresis;       // Stop heating
+                  else if (air >= temp - m)
+                     newtemp = temp;    // try to avoid big overshoot
                   else
-                     newtemp = temp + hysteresis; // Heat
+                     newtemp = temp + hysteresis;       // Heat
                } else
                {                // Cool
                   if (air <= temp)
-                     newtemp = temp + hysteresis; // Stop cooling
-                  else if (air <= temp + margin)
-                     newtemp = temp; // try to avoid big overshoot
+                     newtemp = temp + hysteresis;       // Stop cooling
+                  else if (air <= temp + m)
+                     newtemp = temp;    // try to avoid big overshoot
                   else
-                     newtemp = temp - hysteresis; // Cool
+                     newtemp = temp - hysteresis;       // Cool
                }
                if (newfrate == 'B' &&   //
                    ((newmode == 3 && air > temp + fanauto) || (newmode == 4 && air < temp - fanauto)))
