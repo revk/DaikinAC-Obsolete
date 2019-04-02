@@ -580,10 +580,10 @@ main (int argc, const char *argv[])
          e = mosquitto_connect (mqtt, mqtthost, 1883, 60);
          if (e)
             errx (1, "MQTT connect failed (%s) %s", mqtthost, mosquitto_strerror (e));
-         time_t next = time (0);;
+         time_t next = time (0) / mqttreport * mqttreport;
          while (1)
          {
-            time_t now = time (0) / mqttreport * mqttreport;
+            time_t now = time (0);
             int to = next - now;
             if (to < 0)
             {                   // stat
@@ -618,7 +618,6 @@ main (int argc, const char *argv[])
             e = mosquitto_loop (mqtt, to * 1000, 1);
             if (e)
                errx (1, "MQTT loop failed %s", mosquitto_strerror (e));
-
          }
          mosquitto_destroy (mqtt);
          mosquitto_lib_cleanup ();
