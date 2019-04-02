@@ -48,7 +48,8 @@ main (int argc, const char *argv[])
    // AC constants
    double maxtemp = 30;         // Aircon temp range allowed
    double mintemp = 18;
-   double hysteresis = 3;       // Assume hysteresis in aircon to set hysteresis (well, enough to force down to mompow 1)
+   double stempdelta = 2.5;     // How far we have to go below to force power 0
+   double maxpow = 10;          // Max target power
 #ifdef SQLLIB
    const char *db = NULL;
    const char *svgdate = NULL;
@@ -75,7 +76,7 @@ main (int argc, const char *argv[])
       odelta = 0;               // Auto delta external (main criteria for hot-cold control)
    double flip = 1;             // auto hot/cold flip
    double fanauto = 2;          // temp low switch to auto fan
-   double margin = 0.5;         // Don't overshoot hysteresis if within this margin
+   double margin = 1;           // Undershoot adjust range
 #ifdef LIBMQTT
    int mqttperiod = 60;
    const char *mqttid = NULL;
@@ -536,29 +537,29 @@ main (int argc, const char *argv[])
             {                   // Use air temp as reference
                temp = dt1;      // Reference/target is auto temp as we change heat/cool temp a bit
                double air = strtod (atemp, NULL);
-               double m = margin + margin * (mompow - 1) / 4;;
-               if (m > margin * 3)
-                  m = margin * 3;       // Adjust margin to react to power
-               if (air >= temp + flip || (air >= temp && newmode != 3 && newmode != 4))
-                  newmode = 3;  // force cool
-               else if (air < temp - flip || (newmode != 3 && newmode != 4))
-                  newmode = 4;  // force heat
+               int tpow = 1;
                if (newmode == 4)
                {                // Heat
                   if (air >= temp)
-                     newtemp = temp - hysteresis;       // Stop heating
-                  else if (air >= temp - m * 2)
-                     newtemp = temp - (air - temp + m) * hysteresis / m;        // try to avoid big overshoot
+                     tpow = 0;
+                  else if (air >= temp - margin)
+                     tpow = (temp - air) * maxpow / margin;
                   else
-                     newtemp = temp + hysteresis;       // Heat
+                     tpow = maxpow;
+                  if (mompow > tpow)
+                     tpow /= 2; // Force lower
+                  newtemp = air - stempdelta + stempdelta * 2 * tpow / maxpow;
                } else
                {                // Cool
                   if (air <= temp)
-                     newtemp = temp + hysteresis;       // Stop cooling
-                  else if (air <= temp + m * 2)
-                     newtemp = temp + (temp - m - air) * hysteresis / m;        // try to avoid big overshoot
+                     tpow = 0;
+                  else if (air <= temp + margin)
+                     tpow = (air - temp) * maxpow / margin;
                   else
-                     newtemp = temp - hysteresis;       // Cool
+                     tpow = maxpow;
+                  if (mompow > tpow)
+                     tpow /= 2; // Force lower
+                  newtemp = air + stempdelta - stempdelta * 2 * tpow / maxpow;
                }
                if (newfrate == 'B' &&   //
                    ((newmode == 3 && air > temp + fanauto) || (newmode == 4 && air < temp - fanauto)))
