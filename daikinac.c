@@ -48,7 +48,7 @@ main (int argc, const char *argv[])
    // AC constants
    double maxtemp = 30;         // Aircon temp range allowed
    double mintemp = 18;
-   double stempdelta = 3;       // How far we have to go below to force power min (1)
+   double stempdelta = 2;       // Offset to force temp to move
    double maxpow = 10;          // Max target power
 #ifdef SQLLIB
    const char *db = NULL;
@@ -77,6 +77,8 @@ main (int argc, const char *argv[])
    double flip = 1.5;           // auto hot/cold flip
    double fanauto = 2;          // temp low switch to auto fan
    double margin = 1;           // Undershoot adjust range
+   double offset = margin / 2;  // Adjust centre for setting
+   int forecast = 60;           // Forecast term from delta to work out setting
 #ifdef LIBMQTT
    int mqttperiod = 60;
    const char *mqttid = NULL;
@@ -349,7 +351,7 @@ main (int argc, const char *argv[])
             xml_addf (svg, "+path@fill=none@stroke=red@d", atempbuf);
             xml_addf (svg, "+path@fill=none@stroke=green@d", htempbuf);
             xml_addf (svg, "+path@fill=none@stroke=blue@d", otempbuf);
-            xml_addf (svg, "+path@fill=none@stroke=black@d", dt1buf);
+            xml_addf (svg, "+path@fill=none@stroke=black@stroke-dasharray=1@d", dt1buf);
             free (atempbuf);
             free (htempbuf);
             free (otempbuf);
@@ -362,7 +364,8 @@ main (int argc, const char *argv[])
                  y;
                for (x = 0; x < svgwidth; x += svgh)
                {
-                  xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@d", "M%d 0v%d", x, svgheight);
+                  xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@stroke-dasharray=1@stroke-width=0.5@d", "M%d 0v%d", x,
+                            svgheight);
                   xml_t t = xml_addf (svg, "+text", "%02d", x / svgh);
                   xml_addf (t, "@x", "%d", x);
                   xml_addf (t, "@y", "%d", svgheight);
@@ -370,7 +373,8 @@ main (int argc, const char *argv[])
                }
                for (y = svgc; y < svgheight; y += svgc)
                {
-                  xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@d", "M0 %dh%d", svgheight - y, svgwidth);
+                  xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@stroke-dasharray=1@stroke-width=0.5@d", "M0 %dh%d",
+                            svgheight - y, svgwidth);
                   xml_t t = xml_addf (svg, "+text", "%d℃", y / svgc + svgl);
                   xml_addf (t, "@x", "%d", 0);
                   xml_addf (t, "@y", "%d", svgheight - y);
@@ -390,8 +394,7 @@ main (int argc, const char *argv[])
       double otemp = 0,
          htemp = 0,
          temp = 0,
-         dt1 = 0,
-         mompow = 0;
+         dt1 = 0;
       char frate = 0;
       char *sensor = NULL;
       char *control = NULL;
@@ -449,7 +452,6 @@ main (int argc, const char *argv[])
          htemp = 0;
          temp = 0;
          frate = 0;
-         mompow = 0;
          char *url;
          if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
             errx (1, "malloc");
@@ -504,8 +506,6 @@ main (int argc, const char *argv[])
                temp = strtod (val, NULL);
             else if (!strcmp (tag, "dt1"))
                dt1 = strtod (val, NULL);
-            else if (!strcmp (tag, "mompow"))
-               mompow = atoi (val);
          }
          scan (sensor, check);
          scan (control, check);
@@ -535,44 +535,48 @@ main (int argc, const char *argv[])
             int newmode = oldmode;
             if (atemp)
             {                   // Use air temp as reference
-               temp = dt1;      // Reference/target is auto temp as we change heat/cool temp a bit
                double air = strtod (atemp, NULL);
-	       // TODO can we look at a delta on air temp - the direction and speed, so we can pre-empt where the setting should be for a few minutes time for lag
-               int tpow = 0;
-               if (newmode == 4 && air > temp + flip)
+               // Forecast
+               static double lastair = 0;
+               static time_t lastairt = 0;
+               time_t now = time (0);
+               double thisair = air;
+               if (forecast && lastairt && lastairt < now)
+                  air += (air - lastair) * forecast / (now - lastairt); // Forecast
+               lastair = thisair;
+               lastairt = now;
+               temp = dt1 + offset;     // Use dt1 (auto set) as reference, and add offset to allow for adjustment needed
+               // Flip check
+               if (newmode == 4 && thisair > temp + flip)
                   newmode = 3;  // Change to Cool
-               else if (newmode == 3 && air < temp - flip)
+               else if (newmode == 3 && thisair < temp - flip)
                   newmode = 4;  // Change to Heat
+               int tpow = 0;
                if (newmode == 4)
                {                // Heat
-                  if (air >= temp + margin / 4)
+                  if (air >= temp)
                      tpow = 0;
-                  else if (air >= temp)
-                     tpow = 1;
                   else if (air >= temp - margin)
                      tpow = (temp - air) * maxpow / margin;
                   else
                      tpow = maxpow;
-                  if (mompow == 1 && tpow)
-                     tpow = maxpow;     // Short burst
                   newtemp = air - stempdelta + stempdelta * 3 * tpow / maxpow;
                } else
                {                // Cool
-                  if (air <= temp - margin / 3)
+                  if (air <= temp)
                      tpow = 0;
-                  else if (air <= temp)
-                     tpow = 1;
                   else if (air <= temp + margin)
                      tpow = (air - temp) * maxpow / margin;
                   else
                      tpow = maxpow;
-                  if (mompow == 1 && tpow)
-                     tpow = maxpow;     // Short burst
                   newtemp = air + stempdelta - stempdelta * 3 * tpow / maxpow;
                }
                if (newfrate == 'B' &&   //
                    ((newmode == 3 && air > temp + fanauto) || (newmode == 4 && air < temp - fanauto)))
                   newfrate = 'A';       // Switch to auto mode
+               if (sqldebug)
+                  warnx ("Air %.1lf Forecast %.1lf tpow %d newtemp %.1lf target %.1lf+%.1lf", thisair, air, tpow, newtemp, dt1,
+                         offset);
             } else
             {                   // Use outside or inside temp as reference
                if (htemp < temp - hdelta)
@@ -592,7 +596,14 @@ main (int argc, const char *argv[])
                   errx (1, "malloc");
                changed = 1;
             }
-            newtemp = round (newtemp * 2) / 2;  // It gets upset if not .0 or .5
+            {                   // Rounding with accumulated offset
+               static double terr = 0;
+               double rtemp = newtemp;
+               newtemp = round ((newtemp - terr) * 2) / 2;      // It gets upset if not .0 or .5
+               terr += newtemp - rtemp;
+               if (sqldebug)
+                  warnx ("Set target %.1lf (%.1lf) err %.1lf", rtemp, newtemp, terr);
+            }
             if (newtemp > maxtemp)
                newtemp = maxtemp;
             if (newtemp < mintemp)
@@ -644,7 +655,7 @@ main (int argc, const char *argv[])
 #ifdef LIBMQTT
       if (mqtthost)
       {                         // Handling MQTT only
-         time_t next = time (0);
+         time_t next = time (0) / mqttperiod * mqttperiod + mqttperiod + mqttperiod / 2;
          atemp = NULL;          // Not sane to set for daemon
          ip = poptGetArg (optCon);
          if (poptPeekArg (optCon))
@@ -740,7 +751,7 @@ main (int argc, const char *argv[])
          {
             time_t now = time (0);
             int to = next - now;
-            if (to < 0)
+            if (to <= 0)
             {                   // stat
                next += mqttperiod;
                to = next - now;
