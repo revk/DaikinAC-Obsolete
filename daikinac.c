@@ -591,9 +591,12 @@ main (int argc, const char *argv[])
                to = next - now;
                if (getstatus ())
                {
-                  updatedb ();
+                  updatestatus ();
                   if (hotcold)
                      doauto ();
+                  if (changed)
+                     updatesettings (sensor, control);
+                  updatedb ();
                   void check (char *tag, char *val)
                   {
                      // Only some things we report
