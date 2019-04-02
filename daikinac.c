@@ -48,7 +48,7 @@ main (int argc, const char *argv[])
    // AC constants
    double maxtemp = 30;         // Aircon temp range allowed
    double mintemp = 18;
-   double stempdelta = 2.5;     // How far we have to go below to force power 0
+   double stempdelta = 3;       // How far we have to go below to force power min (1)
    double maxpow = 10;          // Max target power
 #ifdef SQLLIB
    const char *db = NULL;
@@ -74,7 +74,7 @@ main (int argc, const char *argv[])
       dolock = 0;
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0;               // Auto delta external (main criteria for hot-cold control)
-   double flip = 1;             // auto hot/cold flip
+   double flip = 1.5;           // auto hot/cold flip
    double fanauto = 2;          // temp low switch to auto fan
    double margin = 1;           // Undershoot adjust range
 #ifdef LIBMQTT
@@ -537,29 +537,38 @@ main (int argc, const char *argv[])
             {                   // Use air temp as reference
                temp = dt1;      // Reference/target is auto temp as we change heat/cool temp a bit
                double air = strtod (atemp, NULL);
+	       // TODO can we look at a delta on air temp - the direction and speed, so we can pre-empt where the setting should be for a few minutes time for lag
                int tpow = 0;
+               if (newmode == 4 && air > temp + flip)
+                  newmode = 3;  // Change to Cool
+               else if (newmode == 3 && air < temp - flip)
+                  newmode = 4;  // Change to Heat
                if (newmode == 4)
                {                // Heat
-                  if (air >= temp)
+                  if (air >= temp + margin / 4)
                      tpow = 0;
+                  else if (air >= temp)
+                     tpow = 1;
                   else if (air >= temp - margin)
                      tpow = (temp - air) * maxpow / margin;
                   else
                      tpow = maxpow;
-                  if (mompow == 1 && tpow > 1)
+                  if (mompow == 1 && tpow)
                      tpow = maxpow;     // Short burst
-                  newtemp = air - stempdelta + stempdelta * 2 * tpow / maxpow;
+                  newtemp = air - stempdelta + stempdelta * 3 * tpow / maxpow;
                } else
                {                // Cool
-                  if (air <= temp)
+                  if (air <= temp - margin / 3)
                      tpow = 0;
+                  else if (air <= temp)
+                     tpow = 1;
                   else if (air <= temp + margin)
                      tpow = (air - temp) * maxpow / margin;
                   else
                      tpow = maxpow;
-                  if (mompow == 1 && tpow > 1)
+                  if (mompow == 1 && tpow)
                      tpow = maxpow;     // Short burst
-                  newtemp = air + stempdelta - stempdelta * 2 * tpow / maxpow;
+                  newtemp = air + stempdelta - stempdelta * 3 * tpow / maxpow;
                }
                if (newfrate == 'B' &&   //
                    ((newmode == 3 && air > temp + fanauto) || (newmode == 4 && air < temp - fanauto)))
@@ -635,6 +644,7 @@ main (int argc, const char *argv[])
 #ifdef LIBMQTT
       if (mqtthost)
       {                         // Handling MQTT only
+         time_t next = time (0);
          atemp = NULL;          // Not sane to set for daemon
          ip = poptGetArg (optCon);
          if (poptPeekArg (optCon))
@@ -697,6 +707,8 @@ main (int argc, const char *argv[])
                controlfields;
                c (atemp, atemp, atemp);
 #undef c
+               if (hotcold && !strcmp (topic, "atemp"))
+                  next = time (0);      // Time to run hotcold
                if (topic[0] == 'd' && topic[1] == 't' && isdigit (topic[2]) && !topic[3])
                {                // Special case, setting dtN means setting a mode and stemp
                   char *url = NULL;
@@ -724,7 +736,6 @@ main (int argc, const char *argv[])
          e = mosquitto_connect (mqtt, mqtthost, 1883, 60);
          if (e)
             errx (1, "MQTT connect failed (%s) %s", mqtthost, mosquitto_strerror (e));
-         time_t next = time (0) / mqttperiod * mqttperiod + mqttperiod / 2;
          while (1)
          {
             time_t now = time (0);
