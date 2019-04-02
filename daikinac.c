@@ -71,6 +71,7 @@ main (int argc, const char *argv[])
    double maxtemp = 30;         // Aircon temp range allowed
    double mintemp = 18;
    double flip = 1;             // auto hot/cold flip
+   double overshoot = 1;        // Assume hysteresis in aircon to set overshoot
 #ifdef LIBMQTT
    int mqttperiod = 60;
    const char *mqttid = NULL;
@@ -510,10 +511,10 @@ main (int argc, const char *argv[])
       void doauto (void)
       {                         // Temp control
          int oldmode = atoi (mode);
-         double oldtemp = temp;
-         double newtemp = temp;
          if (oldmode != 2 && oldmode != 6)
          {
+         double oldtemp = temp;
+         double newtemp = temp;
             int newmode = 0;
             if (atemp)
             {                   // Use air temp as reference
@@ -524,9 +525,9 @@ main (int argc, const char *argv[])
                else if (air < temp - flip)
                   newmode = 4;  // force heat
                if (air > temp)
-                  newtemp = temp - 1;
+                  newtemp = temp - overshoot;
                else
-                  newtemp = temp + 1;
+                  newtemp = temp + overshoot;
             } else
             {                   // Use outside or inside temp as reference
                if (htemp < temp - hdelta)
