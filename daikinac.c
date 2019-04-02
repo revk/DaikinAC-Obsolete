@@ -42,13 +42,13 @@ int
 main (int argc, const char *argv[])
 {
 #define c(x,t,v) char *set##x=NULL;     // Args
-   controlfields
+   controlfields;
 #undef	c
 #ifdef SQLLIB
    const char *db = NULL;
    const char *svgdate = NULL;
-   int svgl = 10;               // Low C
-   int svgt = 35;               // High C
+   int svgl = 2;                // Low C
+   int svgt = 32;               // High C
    int svgc = 25;               // Per C spacing height
    int svgh = 60;               // Per hour spacing width
    int svgwidth = 24 * svgh;
@@ -64,7 +64,8 @@ main (int argc, const char *argv[])
       modeheat = 0,
       modecool = 0,
       modedry = 0,
-      modefan = 0,dolock=0;
+      modefan = 0,
+      dolock = 0;
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0,               // Auto delta external (main criteria for hot-cold control)
       adelta = 1;               // Auto air temp delta
@@ -76,7 +77,7 @@ main (int argc, const char *argv[])
    const char *mqttpass = NULL;
    const char *mqtttopic = "diakin";
    const char *mqttcmnd = "cmnd";
-   const char *mqttstat = "stat";
+   const char *mqtttele = "tele";
 #endif
    {                            // POPT
       poptContext optCon;       // context for parsing command-line options
@@ -85,36 +86,62 @@ main (int argc, const char *argv[])
          controlfields
 #undef c
 #ifdef SQLLIB
-         {"log", 'l', POPT_ARG_STRING, &db, 0, "Log", "database"},
-         {"svg", 0, POPT_ARG_STRING, &svgdate, 0, "Make SVG", "YYYY-MM-DD"},
+         {
+          "log", 'l', POPT_ARG_STRING, &db, 0, "Log", "database"},
+         {
+          "svg", 0, POPT_ARG_STRING, &svgdate, 0, "Make SVG", "YYYY-MM-DD"},
 #endif
 #ifdef LIBMQTT
-         {"mqtt-host", 'h', POPT_ARG_STRING, &mqtthost, 0, "MQTT host", "hostname"},
-         {"mqtt-id", 0, POPT_ARG_STRING, &mqttid, 0, "MQTT id", "id"},
-         {"mqtt-user", 0, POPT_ARG_STRING, &mqttuser, 0, "MQTT user", "username"},
-         {"mqtt-pass", 0, POPT_ARG_STRING, &mqttpass, 0, "MQTT pass", "password"},
-         {"mqtt-topic", 't', POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttopic, 0, "MQTT topic", "topic"},
-         {"mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
-         {"mqtt-stat", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttstat, 0, "MQTT stat prefix", "prefix"},
-         {"mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
+         {
+          "mqtt-host", 'h', POPT_ARG_STRING, &mqtthost, 0, "MQTT host", "hostname"},
+         {
+          "mqtt-id", 0, POPT_ARG_STRING, &mqttid, 0, "MQTT id", "id"},
+         {
+          "mqtt-user", 0, POPT_ARG_STRING, &mqttuser, 0, "MQTT user", "username"},
+         {
+          "mqtt-pass", 0, POPT_ARG_STRING, &mqttpass, 0, "MQTT pass", "password"},
+         {
+          "mqtt-topic", 't', POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttopic, 0, "MQTT topic", "topic"},
+         {
+          "mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
+         {
+          "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
+         {
+          "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
 #endif
-         {"hot-cold", 'a', POPT_ARG_NONE, &hotcold, 0, "Auto set hot/cold"},
-         {"atemp", 0, POPT_ARG_STRING, &atemp, 0, "Air temp", "C"},
-         {"on", 0, POPT_ARG_NONE, &modeon, 0, "On"},
-         {"off", 0, POPT_ARG_NONE, &modeoff, 0, "Off"},
-         {"auto", 'A', POPT_ARG_NONE, &modeauto, 0, "Auto"},
-         {"heat", 'H', POPT_ARG_NONE, &modeheat, 0, "Heat"},
-         {"cool", 'C', POPT_ARG_NONE, &modecool, 0, "Cool"},
-         {"dry", 'D', POPT_ARG_NONE, &modedry, 0, "Dry"},
-         {"fan", 'F', POPT_ARG_NONE, &modefan, 0, "Fan"},
-         {"table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
-         {"info", 'i', POPT_ARG_NONE, &info, 0, "Show info"},
-         {"hdelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &hdelta, 0, "Inside delta for auto", "C"},
-         {"odelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &odelta, 0, "Outside delta for auto", "C"},
-         {"adelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &adelta, 0, "Air temp delta for auto", "C"},
-         {"lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
-         {"debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"},
-         POPT_AUTOHELP {}
+         {
+          "hot-cold", 'a', POPT_ARG_NONE, &hotcold, 0, "Auto set hot/cold"},
+         {
+          "atemp", 0, POPT_ARG_STRING, &atemp, 0, "Air temp", "C"},
+         {
+          "on", 0, POPT_ARG_NONE, &modeon, 0, "On"},
+         {
+          "off", 0, POPT_ARG_NONE, &modeoff, 0, "Off"},
+         {
+          "auto", 'A', POPT_ARG_NONE, &modeauto, 0, "Auto"},
+         {
+          "heat", 'H', POPT_ARG_NONE, &modeheat, 0, "Heat"},
+         {
+          "cool", 'C', POPT_ARG_NONE, &modecool, 0, "Cool"},
+         {
+          "dry", 'D', POPT_ARG_NONE, &modedry, 0, "Dry"},
+         {
+          "fan", 'F', POPT_ARG_NONE, &modefan, 0, "Fan"},
+         {
+          "table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
+         {
+          "info", 'i', POPT_ARG_NONE, &info, 0, "Show info"},
+         {
+          "hdelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &hdelta, 0, "Inside delta for auto", "C"},
+         {
+          "odelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &odelta, 0, "Outside delta for auto", "C"},
+         {
+          "adelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &adelta, 0, "Air temp delta for auto", "C"},
+         {
+          "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
+         {
+          "debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"}, POPT_AUTOHELP {
+                                                                              }
       };
 
       optCon = poptGetContext (NULL, argc, argv, optionsTable, 0);
@@ -341,7 +368,7 @@ main (int argc, const char *argv[])
       char *control = NULL;
       const char *ip;
 #define c(x,t,v) char *x=NULL;  // Current settings
-      controlfields
+      controlfields;
 #undef	c
       typedef void found_t (char *tag, char *val);
       void scan (char *reply, found_t * found)
@@ -372,21 +399,21 @@ main (int argc, const char *argv[])
       // Get status
       int getstatus (void)
       {
-	      if(dolock)
-	      {
-         char *fn = NULL;
-         if (asprintf (&fn, "/tmp/daikinac-%s", ip) < 0)
-            errx (1, "malloc");
-         lock = open (fn, O_CREAT, 0777);
-         if (lock < 0)
+         if (dolock)
          {
-            warn ("Cannot make lock file %s", fn);
+            char *fn = NULL;
+            if (asprintf (&fn, "/tmp/daikinac-%s", ip) < 0)
+               errx (1, "malloc");
+            lock = open (fn, O_CREAT, 0777);
+            if (lock < 0)
+            {
+               warn ("Cannot make lock file %s", fn);
+               free (fn);
+               return 0;        // Uh?
+            }
             free (fn);
-            return 0;           // Uh?
+            flock (lock, LOCK_EX);
          }
-         free (fn);
-         flock (lock, LOCK_EX);
-	      }
          // Reset
          changed = 0;
          otemp = 0;
@@ -403,15 +430,15 @@ main (int argc, const char *argv[])
       }
       void freestatus (void)
       {
-	      if(dolock)
-	      {
-         if (lock >= 0)
+         if (dolock)
          {
-            flock (lock, LOCK_UN);
-            close (lock);
-            lock = -1;
+            if (lock >= 0)
+            {
+               flock (lock, LOCK_UN);
+               close (lock);
+               lock = -1;
+            }
          }
-	      }
          if (sensor)
          {
             free (sensor);
@@ -423,7 +450,7 @@ main (int argc, const char *argv[])
             control = NULL;
          }
 #define	c(x,t,v) if(x)free(x);x=NULL;
-         controlfields
+         controlfields;
 #undef c
       }
       // Update status
@@ -434,9 +461,9 @@ main (int argc, const char *argv[])
             if (info && strcmp (tag, "ret"))
                printf ("%s\t%s\n", tag, val);
 #define	c(x,t,v) if(!strcmp(#x,tag))if(val&&(!x||strcmp(x,val))){changed=1;if(x)free(x);x=strdup(val);}
-            controlfields
+            controlfields;
 #undef c
-               if (!strcmp (tag, "otemp"))
+            if (!strcmp (tag, "otemp"))
                otemp = strtod (val, NULL);
             if (!strcmp (tag, "htemp"))
                htemp = strtod (val, NULL);
@@ -453,9 +480,9 @@ main (int argc, const char *argv[])
          FILE *o = open_memstream (&url, &len);
          fprintf (o, "http://%s/aircon/set_control_info?", ip);
 #define c(x,t,v) fprintf(o,"%s=%s&",#x,x);
-         controlfields
+         controlfields;
 #undef c
-            fclose (o);
+         fclose (o);
          url[--len] = 0;
          char *ok = get (url);
          free (ok);
@@ -506,9 +533,9 @@ main (int argc, const char *argv[])
             if (f < 0)
                return;
 #define c(x,t,v) if(!strcmp(#x,tag)&&x)val=x;   // Use the setting we now have
-            controlfields
+            controlfields;
 #undef c
-               sql_sprintf (&s, ",`%#S`=%#s", tag, val);
+            sql_sprintf (&s, ",`%#S`=%#s", tag, val);
          }
          scan (sensor, update);
          scan (control, update);
@@ -521,6 +548,7 @@ main (int argc, const char *argv[])
 #ifdef LIBMQTT
       if (mqtthost)
       {                         // Handling MQTT only
+         atemp = NULL;          // Not sane to set for daemon
          ip = poptGetArg (optCon);
          if (poptPeekArg (optCon))
             errx (1, "One aircon only for MQTT operation");
@@ -566,16 +594,23 @@ main (int argc, const char *argv[])
                return;
             topic += l + 1;
             l = msg->payloadlen;
+            char *p = msg->payload;
+            if (l > 2 && *p == '"' && p[l - 1] == '"')
+            {
+               p++;
+               l -= 2;
+            }
             char *val = malloc (l + 1);
-            memcpy (val, msg->payload, l);
+            memcpy (val, p, l);
             if (getstatus ())
             {
                updatestatus ();
                val[l] = 0;
 #define	c(x,t,v) if(!strcmp(#x,topic)){if(val&&(!x||strcmp(x,val))){if(x)free(x);x=strdup(val);changed=1;}}
-               controlfields
+               controlfields;
+               c (atemp, atemp, atemp);
 #undef c
-                  if (changed)
+               if (changed)
                   updatesettings (sensor, control);
             }
             freestatus ();
@@ -587,7 +622,7 @@ main (int argc, const char *argv[])
          e = mosquitto_connect (mqtt, mqtthost, 1883, 60);
          if (e)
             errx (1, "MQTT connect failed (%s) %s", mqtthost, mosquitto_strerror (e));
-         time_t next = time (0) / mqttperiod * mqttperiod;
+         time_t next = time (0) / mqttperiod * mqttperiod + mqttperiod / 2;
          while (1)
          {
             time_t now = time (0);
@@ -604,6 +639,7 @@ main (int argc, const char *argv[])
                   if (changed)
                      updatesettings (sensor, control);
                   updatedb ();
+                  xml_t stat = xml_tree_new (NULL);
                   void check (char *tag, char *val)
                   {
                      // Only some things we report
@@ -611,15 +647,25 @@ main (int argc, const char *argv[])
                          || (strncmp (tag, "f_", 2) && !strstr (tag, "pow") && !strstr (tag, "temp") && strcmp (tag, "mode")
                              && !strstr (tag, "hum") && strcmp (tag, "adv")))
                         return;
-                     char *topic = NULL;
-                     asprintf (&topic, "%s/%s/%s", mqttstat, mqtttopic, tag);
-                     e = mosquitto_publish (mqtt, NULL, topic, strlen (val), val, 0, 0);
-                     if (sqldebug)
-                        warnx ("Publish %s %s", topic, val);
-                     free (topic);
+                     xml_attribute_set (stat, tag, val);
                   }
                   scan (sensor, check);
                   scan (control, check);
+                  if (atemp)
+                     xml_attribute_set (stat, "atemp", atemp);
+                  char *statbuf = NULL;
+                  size_t statlen = 0;
+                  FILE *s = open_memstream (&statbuf, &statlen);
+                  xml_write_json (s, stat);
+                  fclose (s);
+                  char *topic = NULL;
+                  asprintf (&topic, "%s/%s/STATUS", mqtttele, mqtttopic);
+                  e = mosquitto_publish (mqtt, NULL, topic, strlen (statbuf), statbuf, 0, 1);
+                  if (sqldebug)
+                     warnx ("Publish %s %s", topic, statbuf);
+                  free (topic);
+                  free (statbuf);
+                  xml_tree_delete (stat);
                }
                freestatus ();
             }
