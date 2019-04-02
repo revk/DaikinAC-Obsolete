@@ -74,7 +74,7 @@ main (int argc, const char *argv[])
       dolock = 0;
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0;               // Auto delta external (main criteria for hot-cold control)
-   double flip = 1.5;           // auto hot/cold flip
+   double flip = 1;           // auto hot/cold flip
    double fanauto = 2;          // temp low switch to auto fan
    double margin = 1;           // Undershoot adjust range
    double maxoffset = 2;        // Offset range for auto adjust
