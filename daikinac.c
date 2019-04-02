@@ -64,12 +64,12 @@ main (int argc, const char *argv[])
       modeheat = 0,
       modecool = 0,
       modedry = 0,
-      modefan = 0;
+      modefan = 0,dolock=0;
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0,               // Auto delta external (main criteria for hot-cold control)
       adelta = 1;               // Auto air temp delta
 #ifdef LIBMQTT
-   int mqttreport = 60;
+   int mqttperiod = 60;
    const char *mqttid = NULL;
    const char *mqtthost = NULL;
    const char *mqttuser = NULL;
@@ -96,7 +96,7 @@ main (int argc, const char *argv[])
          {"mqtt-topic", 't', POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttopic, 0, "MQTT topic", "topic"},
          {"mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
          {"mqtt-stat", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttstat, 0, "MQTT stat prefix", "prefix"},
-         {"mqtt-repot", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttreport, 0, "MQTT reporting interval", "seconds"},
+         {"mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
 #endif
          {"hot-cold", 'a', POPT_ARG_NONE, &hotcold, 0, "Auto set hot/cold"},
          {"atemp", 0, POPT_ARG_STRING, &atemp, 0, "Air temp", "C"},
@@ -112,6 +112,7 @@ main (int argc, const char *argv[])
          {"hdelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &hdelta, 0, "Inside delta for auto", "C"},
          {"odelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &odelta, 0, "Outside delta for auto", "C"},
          {"adelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &adelta, 0, "Air temp delta for auto", "C"},
+         {"lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
          {"debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"},
          POPT_AUTOHELP {}
       };
@@ -371,6 +372,8 @@ main (int argc, const char *argv[])
       // Get status
       int getstatus (void)
       {
+	      if(dolock)
+	      {
          char *fn = NULL;
          if (asprintf (&fn, "/tmp/daikinac-%s", ip) < 0)
             errx (1, "malloc");
@@ -383,6 +386,7 @@ main (int argc, const char *argv[])
          }
          free (fn);
          flock (lock, LOCK_EX);
+	      }
          // Reset
          changed = 0;
          otemp = 0;
@@ -399,12 +403,15 @@ main (int argc, const char *argv[])
       }
       void freestatus (void)
       {
+	      if(dolock)
+	      {
          if (lock >= 0)
          {
             flock (lock, LOCK_UN);
             close (lock);
             lock = -1;
          }
+	      }
          if (sensor)
          {
             free (sensor);
@@ -580,14 +587,14 @@ main (int argc, const char *argv[])
          e = mosquitto_connect (mqtt, mqtthost, 1883, 60);
          if (e)
             errx (1, "MQTT connect failed (%s) %s", mqtthost, mosquitto_strerror (e));
-         time_t next = time (0) / mqttreport * mqttreport;
+         time_t next = time (0) / mqttperiod * mqttperiod;
          while (1)
          {
             time_t now = time (0);
             int to = next - now;
             if (to < 0)
             {                   // stat
-               next += mqttreport;
+               next += mqttperiod;
                to = next - now;
                if (getstatus ())
                {
