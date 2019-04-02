@@ -537,7 +537,7 @@ main (int argc, const char *argv[])
             {                   // Use air temp as reference
                temp = dt1;      // Reference/target is auto temp as we change heat/cool temp a bit
                double air = strtod (atemp, NULL);
-               int tpow = 1;
+               int tpow = 0;
                if (newmode == 4)
                {                // Heat
                   if (air >= temp)
@@ -546,8 +546,8 @@ main (int argc, const char *argv[])
                      tpow = (temp - air) * maxpow / margin;
                   else
                      tpow = maxpow;
-                  if (mompow > tpow)
-                     tpow /= 2; // Force lower
+                  if (mompow == 1 && tpow > 1)
+                     tpow = maxpow;     // Short burst
                   newtemp = air - stempdelta + stempdelta * 2 * tpow / maxpow;
                } else
                {                // Cool
@@ -557,8 +557,8 @@ main (int argc, const char *argv[])
                      tpow = (air - temp) * maxpow / margin;
                   else
                      tpow = maxpow;
-                  if (mompow > tpow)
-                     tpow /= 2; // Force lower
+                  if (mompow == 1 && tpow > 1)
+                     tpow = maxpow;     // Short burst
                   newtemp = air + stempdelta - stempdelta * 2 * tpow / maxpow;
                }
                if (newfrate == 'B' &&   //
