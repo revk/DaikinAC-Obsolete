@@ -47,7 +47,7 @@ main (int argc, const char *argv[])
    // AC constants
    double maxtemp = 30;         // Aircon temp range allowed
    double mintemp = 18;
-   double hysteresis = 2;       // Assume hysteresis in aircon to set hysteresis
+   double hysteresis = 3;       // Assume hysteresis in aircon to set hysteresis
 #ifdef SQLLIB
    const char *db = NULL;
    const char *svgdate = NULL;
@@ -72,7 +72,7 @@ main (int argc, const char *argv[])
       dolock = 0;
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0;               // Auto delta external (main criteria for hot-cold control)
-   double flip = 1.5;             // auto hot/cold flip
+   double flip = 1.5;           // auto hot/cold flip
    double fanauto = 2;          // temp low switch to auto fan
    double margin = 0.5;         // Don't overshoot hysteresis if within this margin
 #ifdef LIBMQTT
@@ -538,16 +538,16 @@ main (int argc, const char *argv[])
                double m = margin;
                if (mompow > 4)
                   m *= 2;       // Bigger margin if power high
-               if (air >= temp + flip)
+               if (air >= temp + flip || (air >= temp && newmode != 3 && newmode != 4))
                   newmode = 3;  // force cool
-               else if (air < temp - flip)
+               else if (air < temp - flip || (newmode != 3 && newmode != 4))
                   newmode = 4;  // force heat
                if (newmode == 4)
                {                // Heat
                   if (air >= temp)
                      newtemp = temp - hysteresis;       // Stop heating
                   else if (air >= temp - m)
-                     newtemp = temp;    // try to avoid big overshoot
+                     newtemp = temp - (air - temp + m) * hysteresis / m;        // try to avoid big overshoot
                   else
                      newtemp = temp + hysteresis;       // Heat
                } else
@@ -555,7 +555,7 @@ main (int argc, const char *argv[])
                   if (air <= temp)
                      newtemp = temp + hysteresis;       // Stop cooling
                   else if (air <= temp + m)
-                     newtemp = temp;    // try to avoid big overshoot
+                     newtemp = temp + (temp - m - air) * hysteresis / m;        // try to avoid big overshoot
                   else
                      newtemp = temp - hysteresis;       // Cool
                }
