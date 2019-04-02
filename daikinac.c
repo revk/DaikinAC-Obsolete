@@ -19,6 +19,7 @@
 #include <ctype.h>
 #include <err.h>
 #include <signal.h>
+#include <math.h>
 #include <curl/curl.h>
 #ifdef SQLLIB
 #include <sqllib.h>
@@ -581,6 +582,7 @@ main (int argc, const char *argv[])
                   errx (1, "malloc");
                changed = 1;
             }
+            newtemp = round (newtemp * 2) / 2;  // It gets upset if not .0 or .5
             if (newtemp > maxtemp)
                newtemp = maxtemp;
             if (newtemp < mintemp)
