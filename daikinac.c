@@ -77,7 +77,8 @@ main (int argc, const char *argv[])
    double flip = 1.5;           // auto hot/cold flip
    double fanauto = 2;          // temp low switch to auto fan
    double margin = 1;           // Undershoot adjust range
-   double offset = margin / 2;  // Adjust centre for setting
+   double maxoffset = 2;        // Offset range for auto adjust
+   double deltaoffset=0.01;	// Offset adjust rate
    int forecast = 60;           // Forecast term from delta to work out setting
 #ifdef LIBMQTT
    int mqttperiod = 60;
@@ -348,9 +349,9 @@ main (int argc, const char *argv[])
             fclose (cool);
             xml_addf (svg, "+path@fill=red@stroke=none@opacity=0.25@d", heatbuf);
             xml_addf (svg, "+path@fill=blue@stroke=none@opacity=0.25@d", coolbuf);
-            xml_addf (svg, "+path@fill=none@stroke=red@d", atempbuf);
-            xml_addf (svg, "+path@fill=none@stroke=green@d", htempbuf);
-            xml_addf (svg, "+path@fill=none@stroke=blue@d", otempbuf);
+            xml_addf (svg, "+path@fill=none@stroke=red@stroke-linecap=round@stroke-linejoin=round@d", atempbuf);
+            xml_addf (svg, "+path@fill=none@stroke=green@stroke-linecap=round@stroke-linejoin=round@d", htempbuf);
+            xml_addf (svg, "+path@fill=none@stroke=blue@stroke-linecap=round@stroke-linejoin=round@d", otempbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-dasharray=1@d", dt1buf);
             free (atempbuf);
             free (htempbuf);
@@ -391,6 +392,7 @@ main (int argc, const char *argv[])
 #endif
 
       int changed = 0;
+      int thispow = 0;
       double otemp = 0,
          htemp = 0,
          temp = 0,
@@ -496,7 +498,9 @@ main (int argc, const char *argv[])
 #define	c(x,t,v) if(!strcmp(#x,tag))if(val&&(!x||strcmp(x,val))){changed=1;if(x)free(x);x=strdup(val);}
             controlfields;
 #undef c
-            if (!strcmp (tag, "f_rate"))
+            if (!strcmp (tag, "pow"))
+               thispow = atoi (val);
+            else if (!strcmp (tag, "f_rate"))
                frate = *val;
             else if (!strcmp (tag, "otemp"))
                otemp = strtod (val, NULL);
@@ -536,6 +540,20 @@ main (int argc, const char *argv[])
             if (atemp)
             {                   // Use air temp as reference
                double air = strtod (atemp, NULL);
+               // Offset fine tune based on average
+               static double offset = 0;
+               static double ave = -99;
+               if (ave == -99)
+               {                //Init
+                  offset = margin / 2;
+                  ave = air;
+               }
+               ave = (ave * 9 + air) / 10;
+               if (ave < dt1 && offset < maxoffset)
+                  offset += deltaoffset;
+               else if (ave > dt1 && offset > -maxoffset)
+                  offset -= deltaoffset;
+               temp = dt1 + offset;     // Use dt1 (auto set) as reference, and add offset to allow for adjustment needed
                // Forecast
                static double lastair = 0;
                static time_t lastairt = 0;
@@ -545,7 +563,6 @@ main (int argc, const char *argv[])
                   air += (air - lastair) * forecast / (now - lastairt); // Forecast
                lastair = thisair;
                lastairt = now;
-               temp = dt1 + offset;     // Use dt1 (auto set) as reference, and add offset to allow for adjustment needed
                // Flip check
                if (newmode == 4 && thisair > temp + flip)
                   newmode = 3;  // Change to Cool
@@ -754,11 +771,10 @@ main (int argc, const char *argv[])
             if (to <= 0)
             {                   // stat
                next += mqttperiod;
-               to = next - now;
                if (getstatus ())
                {
                   updatestatus ();
-                  if (hotcold)
+                  if (thispow && hotcold)
                      doauto ();
                   if (changed)
                      updatesettings (sensor, control);
@@ -790,8 +806,10 @@ main (int argc, const char *argv[])
                   free (topic);
                   free (statbuf);
                   xml_tree_delete (stat);
-               }
+               } else
+                  next = now;   // Try again!
                freestatus ();
+               to = next - now;
             }
             if (to < 1)
                to = 1;
