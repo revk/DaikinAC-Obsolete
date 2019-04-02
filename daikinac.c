@@ -536,9 +536,9 @@ main (int argc, const char *argv[])
             {                   // Use air temp as reference
                temp = dt1;      // Reference/target is auto temp as we change heat/cool temp a bit
                double air = strtod (atemp, NULL);
-               double m = margin;
-               if (mompow > 4)
-                  m *= 2;       // Bigger margin if power high
+               double m = margin + margin * (mompow - 1) / 4;;
+               if (m > margin * 3)
+                  m = margin * 3;       // Adjust margin to react to power
                if (air >= temp + flip || (air >= temp && newmode != 3 && newmode != 4))
                   newmode = 3;  // force cool
                else if (air < temp - flip || (newmode != 3 && newmode != 4))
