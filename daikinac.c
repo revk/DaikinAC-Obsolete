@@ -67,8 +67,10 @@ main (int argc, const char *argv[])
       modefan = 0,
       dolock = 0;
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
-      odelta = 0,               // Auto delta external (main criteria for hot-cold control)
-      adelta = 1;               // Auto air temp delta
+      odelta = 0;               // Auto delta external (main criteria for hot-cold control)
+   double maxtemp = 30;         // Aircon temp range allowed
+   double mintemp = 18;
+   double flip = 1;             // auto hot/cold flip
 #ifdef LIBMQTT
    int mqttperiod = 60;
    const char *mqttid = NULL;
@@ -136,7 +138,7 @@ main (int argc, const char *argv[])
          {
           "odelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &odelta, 0, "Outside delta for auto", "C"},
          {
-          "adelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &adelta, 0, "Air temp delta for auto", "C"},
+          "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Air temp overshoot to reverse", "C"},
          {
           "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
          {
@@ -240,18 +242,22 @@ main (int argc, const char *argv[])
                htemplen = 0,
                otemplen = 0,
                heatlen = 0,
-               coollen = 0;;
+               coollen = 0,
+               dt1len = 0;
             char *atempbuf = NULL,
                *htempbuf = NULL,
                *otempbuf = NULL,
                *heatbuf = NULL,
-               *coolbuf = NULL;
+               *coolbuf = NULL,
+               *dt1buf = NULL;
             char atempm = 'M',
                htempm = 'M',
-               otempm = 'M';
+               otempm = 'M',
+               dt1m = 'M';
             FILE *atemp = open_memstream (&atempbuf, &atemplen);
             FILE *htemp = open_memstream (&htempbuf, &htemplen);
             FILE *otemp = open_memstream (&otempbuf, &otemplen);
+            FILE *dt1 = open_memstream (&dt1buf, &dt1len);
             FILE *heat = open_memstream (&heatbuf, &heatlen);
             FILE *cool = open_memstream (&coolbuf, &coollen);
             SQL_RES *res = sql_safe_query_store_free (&sql,
@@ -286,6 +292,13 @@ main (int argc, const char *argv[])
                   fprintf (otemp, "%c%d,%d", otempm, x, (int) (svgheight - (d - svgl) * svgc));
                   otempm = 'L';
                }
+               v = sql_col (res, "dt1");
+               if (v)
+               {
+                  d = strtod (v, NULL);
+                  fprintf (dt1, "%c%d,%d", dt1m, x, (int) (svgheight - (d - svgl) * svgc));
+                  dt1m = 'L';
+               }
                v = sql_col (res, "stemp");
                int pow = atoi (sql_colz (res, "pow"));
                int mode = atoi (sql_colz (res, "mode"));
@@ -311,6 +324,7 @@ main (int argc, const char *argv[])
                }
                lastmode = mode;
             }
+            x += svgh / 60;     // Assume minute stats to draw last bar
             if (lastmode == 3)
                fprintf (cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
             if (lastmode == 4)
@@ -318,6 +332,7 @@ main (int argc, const char *argv[])
             fclose (atemp);
             fclose (htemp);
             fclose (otemp);
+            fclose (dt1);
             fclose (heat);
             fclose (cool);
             xml_addf (svg, "+path@fill=red@stroke=none@opacity=0.5@d", heatbuf);
@@ -325,9 +340,11 @@ main (int argc, const char *argv[])
             xml_addf (svg, "+path@fill=none@stroke=red@d", atempbuf);
             xml_addf (svg, "+path@fill=none@stroke=green@d", htempbuf);
             xml_addf (svg, "+path@fill=none@stroke=blue@d", otempbuf);
+            xml_addf (svg, "+path@fill=none@stroke=black@d", dt1buf);
             free (atempbuf);
             free (htempbuf);
             free (otempbuf);
+            free (dt1buf);
             free (heatbuf);
             free (coolbuf);
             {
@@ -361,9 +378,10 @@ main (int argc, const char *argv[])
 #endif
 
       int changed = 0;
-      int otemp = 0,
+      double otemp = 0,
          htemp = 0,
-         temp = 0;
+         temp = 0,
+         dt1 = 0;
       char *sensor = NULL;
       char *control = NULL;
       const char *ip;
@@ -469,6 +487,8 @@ main (int argc, const char *argv[])
                htemp = strtod (val, NULL);
             if (!strcmp (tag, "stemp"))
                temp = strtod (val, NULL);
+            if (!strcmp (tag, "dt1"))
+               dt1 = strtod (val, NULL);
          }
          scan (sensor, check);
          scan (control, check);
@@ -490,16 +510,23 @@ main (int argc, const char *argv[])
       void doauto (void)
       {                         // Temp control
          int oldmode = atoi (mode);
+         double oldtemp = temp;
+         double newtemp = temp;
          if (oldmode != 2 && oldmode != 6)
          {
             int newmode = 0;
-            if (atemp && *atemp)
+            if (atemp)
             {                   // Use air temp as reference
+               temp = dt1;      // Reference is auto temp
                double air = strtod (atemp, NULL);
-               if (air >= temp + adelta)
+               if (air >= temp + flip)
                   newmode = 3;  // force cool
-               else if (air < temp - adelta)
+               else if (air < temp - flip)
                   newmode = 4;  // force heat
+               if (air > temp)
+                  newtemp = temp - 1;
+               else
+                  newtemp = temp + 1;
             } else
             {                   // Use outside or inside temp as reference
                if (htemp < temp - hdelta)
@@ -513,7 +540,21 @@ main (int argc, const char *argv[])
             }
             if (newmode && newmode != oldmode)
             {
+               if (mode)
+                  free (mode);
                if (asprintf (&mode, "%d", newmode) < 0)
+                  errx (1, "malloc");
+               changed = 1;
+            }
+            if (newtemp > maxtemp)
+               newtemp = maxtemp;
+            if (newtemp < mintemp)
+               newtemp = mintemp;
+            if (newtemp != oldtemp)
+            {
+               if (stemp)
+                  free (stemp);
+               if (asprintf (&stemp, "%.1lf", newtemp) < 0)
                   errx (1, "malloc");
                changed = 1;
             }
