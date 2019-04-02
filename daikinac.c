@@ -73,6 +73,7 @@ main (int argc, const char *argv[])
    double hdelta = 4,           // Auto delta internal (allows for wrong reading as own heating/cooling impacts it)
       odelta = 0;               // Auto delta external (main criteria for hot-cold control)
    double flip = 1;             // auto hot/cold flip
+   double fanauto = 2;          // temp low switch to auto fan
 #ifdef LIBMQTT
    int mqttperiod = 60;
    const char *mqttid = NULL;
@@ -141,6 +142,9 @@ main (int argc, const char *argv[])
           "odelta", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &odelta, 0, "Outside delta for auto", "C"},
          {
           "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Air temp overshoot to reverse", "C"},
+         {
+          "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Air temp undershoot to switch to auto fan",
+          "C"},
          {
           "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
          {
@@ -384,6 +388,7 @@ main (int argc, const char *argv[])
          htemp = 0,
          temp = 0,
          dt1 = 0;
+      char frate = 0;
       char *sensor = NULL;
       char *control = NULL;
       const char *ip;
@@ -439,6 +444,7 @@ main (int argc, const char *argv[])
          otemp = 0;
          htemp = 0;
          temp = 0;
+         frate = 0;
          char *url;
          if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
             errx (1, "malloc");
@@ -483,6 +489,8 @@ main (int argc, const char *argv[])
 #define	c(x,t,v) if(!strcmp(#x,tag))if(val&&(!x||strcmp(x,val))){changed=1;if(x)free(x);x=strdup(val);}
             controlfields;
 #undef c
+            if (!strcmp (tag, "f_rate"))
+               frate = *val;
             if (!strcmp (tag, "otemp"))
                otemp = strtod (val, NULL);
             if (!strcmp (tag, "htemp"))
@@ -514,6 +522,7 @@ main (int argc, const char *argv[])
          int oldmode = atoi (mode);
          if (oldmode != 2 && oldmode != 6)
          {
+            char newfrate = frate;
             double oldtemp = temp;
             double newtemp = temp;
             int newmode = 0;
@@ -529,6 +538,9 @@ main (int argc, const char *argv[])
                   newtemp = temp - hysteresis;
                else
                   newtemp = temp + hysteresis;
+               if (newfrate == 'B' &&   //
+                   ((newmode == 3 && air > temp + fanauto) || (newmode == 4 && air < temp - fanauto)))
+                  newfrate = 'A';       // Switch to auto mode
             } else
             {                   // Use outside or inside temp as reference
                if (htemp < temp - hdelta)
@@ -557,6 +569,14 @@ main (int argc, const char *argv[])
                if (stemp)
                   free (stemp);
                if (asprintf (&stemp, "%.1lf", newtemp) < 0)
+                  errx (1, "malloc");
+               changed = 1;
+            }
+            if (newfrate != frate)
+            {
+               if (f_rate)
+                  free (f_rate);
+               if (asprintf (&f_rate, "%c", newfrate) < 0)
                   errx (1, "malloc");
                changed = 1;
             }
@@ -662,7 +682,7 @@ main (int argc, const char *argv[])
 #define c(x,t,v) if(!strcmp(#x,"stemp"))fprintf(o,"%s=%s&",#x,val); else if(!strcmp(#x,"mode"))fprintf(o,"%s=%s&",#x,topic+2); else fprintf(o,"%s=%s&",#x,x);
                   controlfields
 #undef c
-                  fclose (o);
+                     fclose (o);
                   url[--len] = 0;
                   char *ok = get (url);
                   free (ok);
