@@ -47,7 +47,7 @@ main (int argc, const char *argv[])
    // AC constants
    double maxtemp = 30;         // Aircon temp range allowed
    double mintemp = 18;
-   double hysteresis = 3;       // Assume hysteresis in aircon to set hysteresis
+   double hysteresis = 3;       // Assume hysteresis in aircon to set hysteresis (well, enough to force down to mompow 1)
 #ifdef SQLLIB
    const char *db = NULL;
    const char *svgdate = NULL;
