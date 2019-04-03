@@ -544,14 +544,14 @@ main (int argc, const char *argv[])
          flushtemp (&stemplagq, now - atemplag, &stempq);
          flushtemp (&stempq, now - atempage - atemplag, NULL);
          if (stempq.first)
-            flushtemp (&atempq, stempq.first->updated + atemplag,NULL);
+            flushtemp (&atempq, stempq.first->updated + atemplag, NULL);
          int oldmode = atoi (mode);
-         if (atempq.first && stempq.first&&atempq.first->updated < now - atempmin && oldmode != 2 && oldmode != 6)
+         if (atempq.first && stempq.first && atempq.first->updated < now - atempmin && oldmode != 2 && oldmode != 6)
          {                      // Auto temp
             double newtemp = dt1;
             char newfrate = frate;
             int newmode = oldmode;
-            double offset = stempq.sum/stempq.num-atempq.sum/atempq.num;
+            double offset = stempq.sum / stempq.num - atempq.sum / atempq.num;
             if (newmode == 4 && offset <= -flip)
             {
                if (sqldebug)
@@ -575,7 +575,7 @@ main (int argc, const char *argv[])
                terr += newtemp - rtemp;
                if (sqldebug)
                   warnx ("Set target %.1lf (%.1lf err %.1lf) atemp %.1lf ave: atemp %.1lf#%d stemp %.1lf#%d offset %.1lf", rtemp,
-                         newtemp, terr, atemp,  atempq.sum / atempq.num,atempq.num, stempq.sum / stempq.num,stempq.num, offset);
+                         newtemp, terr, atemp, atempq.sum / atempq.num, atempq.num, stempq.sum / stempq.num, stempq.num, offset);
             }
             if (newtemp > maxtemp)
                newtemp = maxtemp;
@@ -599,9 +599,9 @@ main (int argc, const char *argv[])
             }
             if (newmode && newmode != oldmode)
             {
-               flushtemp (&atempq,now,NULL);
-               flushtemp (&stempq,now,NULL);
-               flushtemp (&stemplagq,now,NULL);
+               flushtemp (&atempq, now, NULL);
+               flushtemp (&stempq, now, NULL);
+               flushtemp (&stemplagq, now, NULL);
                if (mode)
                   free (mode);
                if (asprintf (&mode, "%d", newmode) < 0)
@@ -656,7 +656,7 @@ main (int argc, const char *argv[])
             SQL_RES *res = sql_safe_query_store_free (&sql,
                                                       sql_printf
                                                       ("SELECT * FROM `%#S` WHERE `ip`=%#s AND `Updated`>=%#T ORDER BY `Updated`",
-                                                       table, ip, time (0) - atempage - mqttperiod));
+                                                       table, ip, time (0) - atempage - atemplag - mqttperiod));
             while (sql_fetch_row (res))
             {
                int pow = atoi (sql_colz (res, "pow"));
@@ -665,10 +665,10 @@ main (int argc, const char *argv[])
                int mode = atoi (sql_colz (res, "mode"));
                if (mode != lastmode)
                {                // Mode change, flush and ignore this entry
-		       time_t now=time(0);
-               flushtemp (&atempq,now,NULL);
-               flushtemp (&stempq,now,NULL);
-               flushtemp (&stemplagq,now,NULL);
+                  time_t now = time (0);
+                  flushtemp (&atempq, now, NULL);
+                  flushtemp (&stempq, now, NULL);
+                  flushtemp (&stemplagq, now, NULL);
                   lastmode = mode;
                }
                time_t updated = xml_time (sql_colz (res, "updated"));
@@ -680,8 +680,8 @@ main (int argc, const char *argv[])
                if (!v)
                   continue;
                double stemp = strtod (v, NULL);
-               addtemp (&atempq,updated, atemp);
-               addtemp (&stemplagq,updated, stemp);
+               addtemp (&atempq, updated, atemp);
+               addtemp (&stemplagq, updated, stemp);
             }
             sql_free_result (res);
          }
