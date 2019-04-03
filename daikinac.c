@@ -70,7 +70,7 @@ main (int argc, const char *argv[])
       dolock = 0;
    double flip = 3;             // Max offset for flip
    double fanauto = 2;          // Max offset for fan from night to auto
-   int atempage = 3600;         // Moving average temp age
+   int atempage = 1800;         // Moving average temp age
    int atempmin = 600;          // Min for average temp
 #ifdef LIBMQTT
    int mqttperiod = 60;
@@ -532,9 +532,11 @@ main (int argc, const char *argv[])
       }
       void doauto (void)
       {                         // Temp control
+         if (!atempset)
+            return;
          time_t now = time (0);
          addtemp (atempset, temp, atemp);
-         flushtemp (now - atempage);
+         flushtemp (atempset - atempage);
 
          int oldmode = atoi (mode);
          if (thispow && tempfirst && tempfirst->updated < now - atempmin && oldmode != 2 && oldmode != 6)
