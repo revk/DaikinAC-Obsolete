@@ -673,7 +673,7 @@ main (int argc, const char *argv[])
             }
             sql_free_result (res);
          }
-         time_t next = time (0);
+         time_t next = time (0) + mqttperiod;
          int e = mosquitto_lib_init ();
          if (e)
             errx (1, "MQTT init failed %s", mosquitto_strerror (e));
