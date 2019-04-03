@@ -70,7 +70,8 @@ main (int argc, const char *argv[])
       dolock = 0;
    double flip = 3;             // Max offset for flip
    double fanauto = 2;          // Max offset for fan from night to auto
-   int atempage = 3600;         // Moving average temp age
+   int atempage = 900;          // Moving average temp age
+   int atemplag = 300;          // Lag for stemp->atemp
    int atempmin = 300;          // Min for average temp
 #ifdef LIBMQTT
    int mqttperiod = 300;
@@ -115,6 +116,7 @@ main (int argc, const char *argv[])
          { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max offset to reverse", "C"},
          { "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Max offset to switch to auto fan from night", "C"},
          { "atemp-age", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempage, 0, "Time over which to run moving average for adjustment", "Seconds"},
+         { "atemp-lag", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atemplag, 0, "Time lag from setting new temp to expecting to see it", "Seconds"},
          { "atemp-min", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempmin, 0, "Min time for samples before applying adjustment", "Seconds"},
          { "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
          { "debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"}, POPT_AUTOHELP { }
@@ -362,51 +364,53 @@ main (int argc, const char *argv[])
       {
          temp_t *next;
          time_t updated;
-         double stemp;
-         double atemp;
+         double temp;
       };
-      temp_t *tempfirst = NULL,
-         *templast = NULL;
-      double atempsum = 0;
-      double stempsum = 0;
-      int ntemp = 0;
-      void flushtemp (time_t ref)
+      typedef struct tempq_s tempq_t;
+      struct tempq_s
       {
-         while (tempfirst && tempfirst->updated <= ref)
-         {
-            temp_t *t = tempfirst;
-            //if (sqldebug) warnx ("Deleted atemp %.1lf stemp %.1lf", t->atemp, t->stemp);
-            ntemp--;
-            atempsum -= t->atemp;
-            stempsum -= t->stemp;
-            tempfirst = t->next;
-            free (t);
-            if (!tempfirst)
-               templast = NULL;
-         }
-      }
-      void addtemp (time_t updated, double stemp, double atemp)
+         temp_t *first,
+          *last;
+         double sum;
+         int num;
+      };
+      tempq_t atempq = { };
+      tempq_t stempq = { };
+      tempq_t stemplagq = { };
+      void addtemp (tempq_t * q, time_t updated, double temp)
       {
          if (!updated)
             return;             // Not set
-         if (templast && templast->updated >= updated)
+         if (q->last && q->last->updated >= updated)
             return;             // Not new
          temp_t *t = malloc (sizeof (*t));
          if (!t)
             errx (1, "malloc");
          t->next = NULL;
          t->updated = updated;
-         t->stemp = stemp;
-         t->atemp = atemp;
-         atempsum += atemp;
-         stempsum += stemp;
-         ntemp++;
-         if (templast)
-            templast->next = t;
+         t->temp = temp;
+         q->sum += temp;
+         q->num++;
+         if (q->last)
+            q->last->next = t;
          else
-            tempfirst = t;
-         templast = t;
-         //if (sqldebug) warnx ("Added atemp %.1lf stemp %.1lf", atemp, stemp);
+            q->first = t;
+         q->last = t;
+      }
+      void flushtemp (tempq_t * q, time_t ref, tempq_t * req)
+      {
+         while (q->first && q->first->updated <= ref)
+         {
+            temp_t *t = q->first;
+            q->num--;
+            q->sum -= t->temp;
+            q->first = t->next;
+            if (req)
+               addtemp (req, t->updated, t->temp);
+            free (t);
+            if (!q->first)
+               q->last = NULL;
+         }
       }
       const char *ip;
 #define c(x,t,v) char *x=NULL;  // Current settings
@@ -535,16 +539,19 @@ main (int argc, const char *argv[])
          if (!atempset || !thispow)
             return;
          time_t now = time (0);
-         addtemp (atempset, temp, atemp);
-         flushtemp (atempset - atempage);
-
+         addtemp (&stemplagq, now, temp);
+         addtemp (&atempq, atempset, atemp);
+         flushtemp (&stemplagq, now - atemplag, &stempq);
+         flushtemp (&stempq, now - atempage - atemplag, NULL);
+         if (stempq.first)
+            flushtemp (&atempq, stempq.first->updated + atemplag,NULL);
          int oldmode = atoi (mode);
-         if (tempfirst && tempfirst->updated < now - atempmin && oldmode != 2 && oldmode != 6)
+         if (atempq.first && stempq.first&&atempq.first->updated < now - atempmin && oldmode != 2 && oldmode != 6)
          {                      // Auto temp
             double newtemp = dt1;
             char newfrate = frate;
             int newmode = oldmode;
-            double offset = (stempsum - atempsum) / ntemp;
+            double offset = stempq.sum/stempq.num-atempq.sum/atempq.num;
             if (newmode == 4 && offset <= -flip)
             {
                if (sqldebug)
@@ -567,8 +574,8 @@ main (int argc, const char *argv[])
                newtemp = round ((newtemp - terr) * 2) / 2;      // It gets upset if not .0 or .5
                terr += newtemp - rtemp;
                if (sqldebug)
-                  warnx ("Set target %.1lf (%.1lf err %.1lf) atemp %.1lf ave: ntemp %d atemp %.1lf stemp %.1lf offset %.1lf", rtemp,
-                         newtemp, terr, atemp, ntemp, atempsum / ntemp, stempsum / ntemp, offset);
+                  warnx ("Set target %.1lf (%.1lf err %.1lf) atemp %.1lf ave: atemp %.1lf#%d stemp %.1lf#%d offset %.1lf", rtemp,
+                         newtemp, terr, atemp,  atempq.sum / atempq.num,atempq.num, stempq.sum / stempq.num,stempq.num, offset);
             }
             if (newtemp > maxtemp)
                newtemp = maxtemp;
@@ -592,7 +599,9 @@ main (int argc, const char *argv[])
             }
             if (newmode && newmode != oldmode)
             {
-               flushtemp (now);
+               flushtemp (&atempq,now,NULL);
+               flushtemp (&stempq,now,NULL);
+               flushtemp (&stemplagq,now,NULL);
                if (mode)
                   free (mode);
                if (asprintf (&mode, "%d", newmode) < 0)
@@ -601,10 +610,10 @@ main (int argc, const char *argv[])
             }
          } else if (sqldebug)
          {
-            if (!tempfirst)
+            if (!atempq.first)
                warnx ("No temp records - not auto setting");
-            else if (tempfirst->updated >= now - atempmin)
-               warnx ("Not enough temp records (%d) %ds - not auto setting yet", ntemp, (int) (now - tempfirst->updated));
+            else if (atempq.first->updated >= now - atempmin)
+               warnx ("Not enough temp records (%d) %ds - not auto setting yet", atempq.num, (int) (now - atempq.first->updated));
             else if (oldmode != 2 && oldmode != 6)
                warnx ("Mode %d - not auto setting", oldmode);
          }
@@ -656,9 +665,11 @@ main (int argc, const char *argv[])
                int mode = atoi (sql_colz (res, "mode"));
                if (mode != lastmode)
                {                // Mode change, flush and ignore this entry
-                  flushtemp (time (0));
+		       time_t now=time(0);
+               flushtemp (&atempq,now,NULL);
+               flushtemp (&stempq,now,NULL);
+               flushtemp (&stemplagq,now,NULL);
                   lastmode = mode;
-                  continue;
                }
                time_t updated = xml_time (sql_colz (res, "updated"));
                char *v = sql_col (res, "atemp");
@@ -669,7 +680,8 @@ main (int argc, const char *argv[])
                if (!v)
                   continue;
                double stemp = strtod (v, NULL);
-               addtemp (updated, stemp, atemp);
+               addtemp (&atempq,updated, atemp);
+               addtemp (&stemplagq,updated, stemp);
             }
             sql_free_result (res);
          }
