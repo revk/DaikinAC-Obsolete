@@ -88,58 +88,37 @@ main (int argc, const char *argv[])
 #define	c(x,t,v)	{#x, 0, POPT_ARG_STRING, &set##x, 0, #t, #v},
          controlfields
 #undef c
+		 // *INDENT-OFF*
 #ifdef SQLLIB
-         {
-          "log", 'l', POPT_ARG_STRING, &db, 0, "Log", "database"},
-         {
-          "svg", 0, POPT_ARG_STRING, &svgdate, 0, "Make SVG", "YYYY-MM-DD"},
+         { "log", 'l', POPT_ARG_STRING, &db, 0, "Log", "database"},
+         { "svg", 0, POPT_ARG_STRING, &svgdate, 0, "Make SVG", "YYYY-MM-DD"},
 #endif
 #ifdef LIBMQTT
-         {
-          "mqtt-host", 'h', POPT_ARG_STRING, &mqtthost, 0, "MQTT host", "hostname"},
-         {
-          "mqtt-id", 0, POPT_ARG_STRING, &mqttid, 0, "MQTT id", "id"},
-         {
-          "mqtt-user", 0, POPT_ARG_STRING, &mqttuser, 0, "MQTT user", "username"},
-         {
-          "mqtt-pass", 0, POPT_ARG_STRING, &mqttpass, 0, "MQTT pass", "password"},
-         {
-          "mqtt-topic", 't', POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttopic, 0, "MQTT topic", "topic"},
-         {
-          "mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
-         {
-          "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
-         {
-          "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
+         { "mqtt-host", 'h', POPT_ARG_STRING, &mqtthost, 0, "MQTT host", "hostname"},
+         { "mqtt-id", 0, POPT_ARG_STRING, &mqttid, 0, "MQTT id", "id"},
+         { "mqtt-user", 0, POPT_ARG_STRING, &mqttuser, 0, "MQTT user", "username"},
+         { "mqtt-pass", 0, POPT_ARG_STRING, &mqttpass, 0, "MQTT pass", "password"},
+         { "mqtt-topic", 't', POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttopic, 0, "MQTT topic", "topic"},
+         { "mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
+         { "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
+         { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
 #endif
-         {
-          "on", 0, POPT_ARG_NONE, &modeon, 0, "On"},
-         {
-          "off", 0, POPT_ARG_NONE, &modeoff, 0, "Off"},
-         {
-          "auto", 'A', POPT_ARG_NONE, &modeauto, 0, "Auto"},
-         {
-          "heat", 'H', POPT_ARG_NONE, &modeheat, 0, "Heat"},
-         {
-          "cool", 'C', POPT_ARG_NONE, &modecool, 0, "Cool"},
-         {
-          "dry", 'D', POPT_ARG_NONE, &modedry, 0, "Dry"},
-         {
-          "fan", 'F', POPT_ARG_NONE, &modefan, 0, "Fan"},
-         {
-          "table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
-         {
-          "info", 'i', POPT_ARG_NONE, &info, 0, "Show info"},
-         {
-          "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max offset to reverse", "C"},
-         {
-          "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Max offset to switch to auto fan from night",
-          "C"},
-         {
-          "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
-         {
-          "debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"}, POPT_AUTOHELP {
-                                                                              }
+         { "on", 0, POPT_ARG_NONE, &modeon, 0, "On"},
+         { "off", 0, POPT_ARG_NONE, &modeoff, 0, "Off"},
+         { "auto", 'A', POPT_ARG_NONE, &modeauto, 0, "Auto"},
+         { "heat", 'H', POPT_ARG_NONE, &modeheat, 0, "Heat"},
+         { "cool", 'C', POPT_ARG_NONE, &modecool, 0, "Cool"},
+         { "dry", 'D', POPT_ARG_NONE, &modedry, 0, "Dry"},
+         { "fan", 'F', POPT_ARG_NONE, &modefan, 0, "Fan"},
+         { "table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
+         { "info", 'i', POPT_ARG_NONE, &info, 0, "Show info"},
+         { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max offset to reverse", "C"},
+         { "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Max offset to switch to auto fan from night", "C"},
+         { "atemp-age", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempage, 0, "Time over which to run moving average for adjustment", "Seconds"},
+         { "atemp-min", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempmin, 0, "Min time for samples before applying adjustment", "Seconds"},
+         { "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
+         { "debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"}, POPT_AUTOHELP { }
+		 // *INDENT-ON*
       };
 
       optCon = poptGetContext (NULL, argc, argv, optionsTable, 0);
