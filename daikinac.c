@@ -70,8 +70,8 @@ main (int argc, const char *argv[])
       dolock = 0;
    double flip = 3;             // Max offset for flip
    double fanauto = 2;          // Max offset for fan from night to auto
-   int atempage = 1800;         // Moving average temp age
-   int atempmin = 600;          // Min for average temp
+   int atempage = 900;         // Moving average temp age
+   int atempmin = 300;          // Min for average temp
 #ifdef LIBMQTT
    int mqttperiod = 300;
    const char *mqttid = NULL;
