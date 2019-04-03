@@ -73,7 +73,7 @@ main (int argc, const char *argv[])
    int atempage = 1800;         // Moving average temp age
    int atempmin = 600;          // Min for average temp
 #ifdef LIBMQTT
-   int mqttperiod = 60;
+   int mqttperiod = 300;
    const char *mqttid = NULL;
    const char *mqtthost = NULL;
    const char *mqttuser = NULL;
@@ -673,7 +673,7 @@ main (int argc, const char *argv[])
             }
             sql_free_result (res);
          }
-         time_t next = time (0) / mqttperiod * mqttperiod + mqttperiod + mqttperiod / 2;
+         time_t next = time (0);
          int e = mosquitto_lib_init ();
          if (e)
             errx (1, "MQTT init failed %s", mosquitto_strerror (e));
