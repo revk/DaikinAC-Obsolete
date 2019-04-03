@@ -532,14 +532,14 @@ main (int argc, const char *argv[])
       }
       void doauto (void)
       {                         // Temp control
-         if (!atempset)
+         if (!atempset || !thispow)
             return;
          time_t now = time (0);
          addtemp (atempset, temp, atemp);
          flushtemp (atempset - atempage);
 
          int oldmode = atoi (mode);
-         if (thispow && tempfirst && tempfirst->updated < now - atempmin && oldmode != 2 && oldmode != 6)
+         if (tempfirst && tempfirst->updated < now - atempmin && oldmode != 2 && oldmode != 6)
          {                      // Auto temp
             double newtemp = dt1;
             char newfrate = frate;
@@ -601,9 +601,7 @@ main (int argc, const char *argv[])
             }
          } else if (sqldebug)
          {
-            if (!thispow)
-               warnx ("Power is off - not auto setting");
-            else if (!tempfirst)
+            if (!tempfirst)
                warnx ("No temp records - not auto setting");
             else if (tempfirst->updated >= now - atempmin)
                warnx ("Not enough temp records (%d) %ds - not auto setting yet", ntemp, (int) (now - tempfirst->updated));
