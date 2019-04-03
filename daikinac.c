@@ -652,6 +652,9 @@ main (int argc, const char *argv[])
                                                        table, ip, time (0) - atempage - mqttperiod));
             while (sql_fetch_row (res))
             {
+               int pow = atoi (sql_colz (res, "pow"));
+               if (!pow)
+                  continue;     // Only powered on readings, duh
                int mode = atoi (sql_colz (res, "mode"));
                if (mode != lastmode)
                {                // Mode change, flush and ignore this entry
