@@ -23,12 +23,14 @@
 #include <curl/curl.h>
 #ifdef SQLLIB
 #include <sqllib.h>
-#include <axl.h>
 #else
 int sqldebug = 0;               // General debug
 #endif
 #ifdef LIBMQTT
 #include <mosquitto.h>
+#endif
+#if	defined(SQLLIB) || defined(LIBMQTT)
+#include <axl.h>
 #endif
 
 #define	controlfields			\
@@ -46,10 +48,9 @@ main (int argc, const char *argv[])
    controlfields;
 #undef	c
    // AC constants
-   double maxtemp = 30;         // Aircon temp range allowed
-   double mintemp = 18;
 #ifdef SQLLIB
    const char *db = NULL;
+   const char *table = "daikin";
    const char *svgdate = NULL;
    int svgl = 2;                // Low C
    int svgt = 32;               // High C
@@ -58,7 +59,6 @@ main (int argc, const char *argv[])
    int svgwidth = 24 * svgh;
    int svgheight = (svgt - svgl) * svgc;
 #endif
-   const char *table = "daikin";
    int info = 0,
       modeoff = 0,
       modeon = 0,
@@ -68,13 +68,15 @@ main (int argc, const char *argv[])
       modedry = 0,
       modefan = 0,
       dolock = 0;
+#ifdef LIBMQTT
+   double maxtemp = 30;         // Aircon temp range allowed
+   double mintemp = 18;
    double flip = 3;             // Max offset for flip
    double fanauto = 2;          // Max offset for fan from night to auto
    double maxoffset = 3;        // Max offset
    int atempage = 1200;         // Moving average temp age
    int atemplag = 360;          // Lag for stemp->atemp
    int atempmin = 600;          // Min for average temp
-#ifdef LIBMQTT
    int mqttperiod = 60;
    const char *mqttid = NULL;
    const char *mqtthost = NULL;
@@ -91,8 +93,17 @@ main (int argc, const char *argv[])
          controlfields
 #undef c
 		 // *INDENT-OFF*
+         { "on", 0, POPT_ARG_NONE, &modeon, 0, "On"},
+         { "off", 0, POPT_ARG_NONE, &modeoff, 0, "Off"},
+         { "auto", 'A', POPT_ARG_NONE, &modeauto, 0, "Auto"},
+         { "heat", 'H', POPT_ARG_NONE, &modeheat, 0, "Heat"},
+         { "cool", 'C', POPT_ARG_NONE, &modecool, 0, "Cool"},
+         { "dry", 'D', POPT_ARG_NONE, &modedry, 0, "Dry"},
+         { "fan", 'F', POPT_ARG_NONE, &modefan, 0, "Fan"},
+         { "info", 'i', POPT_ARG_NONE, &info, 0, "Show info"},
 #ifdef SQLLIB
          { "log", 'l', POPT_ARG_STRING, &db, 0, "Log", "database"},
+         { "table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
          { "svg", 0, POPT_ARG_STRING, &svgdate, 0, "Make SVG", "YYYY-MM-DD"},
 #endif
 #ifdef LIBMQTT
@@ -104,16 +115,6 @@ main (int argc, const char *argv[])
          { "mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
          { "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
          { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
-#endif
-         { "on", 0, POPT_ARG_NONE, &modeon, 0, "On"},
-         { "off", 0, POPT_ARG_NONE, &modeoff, 0, "Off"},
-         { "auto", 'A', POPT_ARG_NONE, &modeauto, 0, "Auto"},
-         { "heat", 'H', POPT_ARG_NONE, &modeheat, 0, "Heat"},
-         { "cool", 'C', POPT_ARG_NONE, &modecool, 0, "Cool"},
-         { "dry", 'D', POPT_ARG_NONE, &modedry, 0, "Dry"},
-         { "fan", 'F', POPT_ARG_NONE, &modefan, 0, "Fan"},
-         { "table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
-         { "info", 'i', POPT_ARG_NONE, &info, 0, "Show info"},
          { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max reverse offset to flip modes", "C"},
          { "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Max forward offset to switch to auto fan from night", "C"},
          { "max-offset", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxoffset, 0, "Max forward offset to apply", "C"},
@@ -121,6 +122,7 @@ main (int argc, const char *argv[])
          { "atemp-lag", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atemplag, 0, "Time lag from setting new temp to expecting to see it", "Seconds"},
          { "atemp-min", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempmin, 0, "Min time for samples before applying adjustment", "Seconds"},
          { "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
+#endif
          { "debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"}, POPT_AUTOHELP { }
 		 // *INDENT-ON*
       };
@@ -358,12 +360,13 @@ main (int argc, const char *argv[])
 #endif
 
       int changed = 0;
+      char *sensor = NULL;
+      char *control = NULL;
+#ifdef	LIBMQTT
       int thispow = 0;
       double temp = 0,
          dt1 = 0;
       char frate = 0;
-      char *sensor = NULL;
-      char *control = NULL;
       time_t atempset = 0;      // Time last set
       double atemp = 0;         // Last set
       typedef struct temp_s temp_t;
@@ -419,10 +422,12 @@ main (int argc, const char *argv[])
                q->last = NULL;
          }
       }
+#endif
       const char *ip;
 #define c(x,t,v) char *x=NULL;  // Current settings
       controlfields;
 #undef	c
+#if	defined(SQLLIB) || defined(LIBMQTT)
       typedef void found_t (char *tag, char *val);
       void scan (char *reply, found_t * found)
       {
@@ -448,6 +453,7 @@ main (int argc, const char *argv[])
             p = n;
          }
       }
+#endif
       int lock = -1;
       // Get status
       int getstatus (void)
@@ -469,8 +475,12 @@ main (int argc, const char *argv[])
          }
          // Reset
          changed = 0;
+#ifdef	LIBMQTT
          temp = 0;
          frate = 0;
+	 dt1=0;
+	 thispow=0;
+#endif
          char *url;
          if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
             errx (1, "malloc");
@@ -513,6 +523,7 @@ main (int argc, const char *argv[])
          controlfields;
 #undef c
       }
+#ifdef	LIBMQTT
       // Update status
       void updatestatus ()
       {
@@ -536,6 +547,9 @@ main (int argc, const char *argv[])
          scan (sensor, check);
          scan (control, check);
       }
+#else
+#define	updatestatus(s,c)
+#endif
       void updatesettings ()
       {                         // Set new control
          char *url = NULL;
@@ -550,6 +564,7 @@ main (int argc, const char *argv[])
          char *ok = get (url);
          free (ok);
       }
+#ifdef LIBMQTT
       void doauto (void)
       {                         // Temp control
          if (!atempset || !thispow)
@@ -639,6 +654,7 @@ main (int argc, const char *argv[])
                warnx ("Mode %d - not auto setting", oldmode);
          }
       }
+#endif
 
       void updatedb (void)
       {
@@ -659,8 +675,10 @@ main (int argc, const char *argv[])
          }
          scan (sensor, update);
          scan (control, update);
+#ifdef	LIBMQTT
          if (atempset && atempset > time (0) - mqttperiod * 2 && sql_colnum (fields, "atemp") >= 0)
             sql_sprintf (&s, ",`atemp`=%.1lf", atemp);
+#endif
          sql_safe_query_s (&sql, &s);
 #endif
       }
@@ -672,6 +690,7 @@ main (int argc, const char *argv[])
          ip = poptGetArg (optCon);
          if (poptPeekArg (optCon))
             errx (1, "One aircon only for MQTT operation");
+#ifdef	SQLLIB
          if (db)
          {                      // Load temp history from database
             int lastmode = 0;
@@ -710,6 +729,7 @@ main (int argc, const char *argv[])
             }
             sql_free_result (res);
          }
+#endif
          time_t next = time (0) + mqttperiod;
          int e = mosquitto_lib_init ();
          if (e)
