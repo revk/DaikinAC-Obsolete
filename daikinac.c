@@ -70,6 +70,7 @@ main (int argc, const char *argv[])
       dolock = 0;
    double flip = 3;             // Max offset for flip
    double fanauto = 2;          // Max offset for fan from night to auto
+   double maxoffset = 3;        // Max offset
    int atempage = 1200;         // Moving average temp age
    int atemplag = 360;          // Lag for stemp->atemp
    int atempmin = 600;          // Min for average temp
@@ -113,8 +114,9 @@ main (int argc, const char *argv[])
          { "fan", 'F', POPT_ARG_NONE, &modefan, 0, "Fan"},
          { "table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
          { "info", 'i', POPT_ARG_NONE, &info, 0, "Show info"},
-         { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max offset to reverse", "C"},
-         { "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Max offset to switch to auto fan from night", "C"},
+         { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max reverse offset to flip modes", "C"},
+         { "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Max forward offset to switch to auto fan from night", "C"},
+         { "max-offset", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxoffset, 0, "Max forward offset to apply", "C"},
          { "atemp-age", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempage, 0, "Time over which to run moving average for adjustment", "Seconds"},
          { "atemp-lag", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atemplag, 0, "Time lag from setting new temp to expecting to see it", "Seconds"},
          { "atemp-min", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempmin, 0, "Min time for samples before applying adjustment", "Seconds"},
@@ -505,9 +507,10 @@ main (int argc, const char *argv[])
          {
             if (info && strcmp (tag, "ret"))
                printf ("%s\t%s\n", tag, val);
-#define	c(x,t,v) if(!strcmp(#x,tag))if(val&&(!x||strcmp(x,val))){changed=1;if(x)free(x);x=strdup(val);}
+#define	c(x,t,v) if(!strcmp(#x,tag))if(val&&(!x||strcmp(x,val))){if(x)free(x);x=strdup(val);}
             controlfields;
 #undef c
+	    // Note some settings
             if (!strcmp (tag, "pow"))
                thispow = atoi (val);
             else if (!strcmp (tag, "f_rate"))
@@ -564,9 +567,11 @@ main (int argc, const char *argv[])
                newmode = 4;     // Switch to heat
             } else
             {                   // Adjust
-               if (newfrate == 'B' && ((newmode == 4 && offset <= -fanauto) || (newmode == 3 && offset >= fanauto)))
+               if (newfrate == 'B' && ((newmode == 4 && offset > fanauto) || (newmode == 3 && offset < -fanauto)))
                   newfrate = 'A';       // Set auto
                // Set offset
+               if (offset > maxoffset)
+                  offset = maxoffset;
                newtemp += offset;
                // Rounding with error dither
                static double terr = 0;
@@ -597,16 +602,19 @@ main (int argc, const char *argv[])
                   errx (1, "malloc");
                changed = 1;
             }
-            if (newmode && newmode != oldmode)
+            if (newmode != oldmode)
             {
-               flushtemp (&atempq, now, NULL);
-               flushtemp (&stempq, now, NULL);
-               flushtemp (&stemplagq, now, NULL);
                if (mode)
                   free (mode);
                if (asprintf (&mode, "%d", newmode) < 0)
                   errx (1, "malloc");
                changed = 1;
+            }
+            if (newfrate != frate || newmode != oldmode)
+            {
+               flushtemp (&atempq, now, NULL);
+               flushtemp (&stempq, now, NULL);
+               flushtemp (&stemplagq, now, NULL);
             }
          } else if (sqldebug)
          {
@@ -653,6 +661,7 @@ main (int argc, const char *argv[])
          if (db)
          {                      // Load temp history from database
             int lastmode = 0;
+            char lastfrate = 0;
             SQL_RES *res = sql_safe_query_store_free (&sql,
                                                       sql_printf
                                                       ("SELECT * FROM `%#S` WHERE `ip`=%#s AND `Updated`>=%#T ORDER BY `Updated`",
@@ -663,13 +672,15 @@ main (int argc, const char *argv[])
                if (!pow)
                   continue;     // Only powered on readings, duh
                int mode = atoi (sql_colz (res, "mode"));
-               if (mode != lastmode)
+               char frate = *sql_colz (res, "f_rate");
+               if (mode != lastmode || frate != lastfrate)
                {                // Mode change, flush and ignore this entry
                   time_t now = time (0);
                   flushtemp (&atempq, now, NULL);
                   flushtemp (&stempq, now, NULL);
                   flushtemp (&stemplagq, now, NULL);
                   lastmode = mode;
+                  lastfrate = frate;
                }
                time_t updated = xml_time (sql_colz (res, "updated"));
                char *v = sql_col (res, "atemp");
@@ -836,6 +847,9 @@ main (int argc, const char *argv[])
          if (getstatus ())
          {
             updatestatus (sensor, control);
+#define	c(x,t,v) if(set##x&&x&&strcmp(x,set##x)){changed=1;if(x)free(x);x=strdup(set##x);}
+            controlfields;
+#undef c
             if (changed)
                updatesettings (sensor, control);
             updatedb ();
