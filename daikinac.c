@@ -72,6 +72,7 @@ main (int argc, const char *argv[])
    double maxtemp = 30;         // Aircon temp range allowed
    double mintemp = 18;
    double flip = 3;             // Max offset for flip
+   double margin = 1;           // Margin out of range for flip or fan auto
    double fanauto = 2;          // Max offset for fan from night to auto
    double maxoffset = 3;        // Max offset
    int atempage = 1200;         // Moving average temp age
@@ -115,6 +116,7 @@ main (int argc, const char *argv[])
          { "mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
          { "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
          { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
+         { "margin", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &margin, 0, "Max beyond temp before flip or fan auto", "C"},
          { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max reverse offset to flip modes", "C"},
          { "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Max forward offset to switch to auto fan from night", "C"},
          { "max-offset", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxoffset, 0, "Max forward offset to apply", "C"},
@@ -580,23 +582,26 @@ main (int argc, const char *argv[])
          double newtemp = dt1;
          char newfrate = frate;
          int newmode = oldmode;
-	 double offset=0;
+         double offset = 0;
          if (atempq.first && stempq.first && atempq.first->updated < now - atempmin && oldmode != 2 && oldmode != 6)
          {                      // Auto temp
-            offset = stempq.sum / stempq.num - atempq.sum / atempq.num;
-            if (newmode == 4 && offset <= -flip)
+            double ave = atempq.sum / atempq.num;
+            offset = stempq.sum / stempq.num - ave;
+            if (newmode == 4 && offset <= -flip && ave > temp + margin)
             {
                if (sqldebug)
                   warnx ("Switch to cooling (offset %.1lf)", offset);
                newmode = 3;     // Switch to cool
-            } else if (newmode == 3 && offset >= flip)
+            } else if (newmode == 3 && offset >= flip && ave < temp - margin)
             {
                if (sqldebug)
                   warnx ("Switch to heating (offset %.1lf)", offset);
                newmode = 4;     // Switch to heat
             } else
             {                   // Adjust
-               if (newfrate == 'B' && ((newmode == 4 && offset > fanauto) || (newmode == 3 && offset < -fanauto)))
+               if (newfrate == 'B'
+                   && ((newmode == 4 && offset > fanauto && ave < temp - margin)
+                       || (newmode == 3 && offset < -fanauto && ave > temp + margin)))
                   newfrate = 'A';       // Set auto
                // Set offset
                if (offset > maxoffset)
