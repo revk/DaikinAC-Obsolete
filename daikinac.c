@@ -657,7 +657,7 @@ main (int argc, const char *argv[])
 #ifdef LIBMQTT
       if (mqtthost)
       {                         // Handling MQTT only
-         openlog ("galaxy", LOG_CONS | LOG_PID, LOG_USER);
+         openlog ("daikinac", LOG_CONS | LOG_PID, LOG_USER);
          ip = poptGetArg (optCon);
          if (poptPeekArg (optCon))
             errx (1, "One aircon only for MQTT operation");
