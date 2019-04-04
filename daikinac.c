@@ -606,6 +606,8 @@ main (int argc, const char *argv[])
                // Set offset
                if (offset > maxoffset)
                   offset = maxoffset;
+               if (offset < -maxoffset)
+                  offset = -maxoffset;
                newtemp += offset;
             }
          } else if (sqldebug)
