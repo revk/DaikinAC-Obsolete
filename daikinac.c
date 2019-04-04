@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/file.h>
+#include <syslog.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdlib.h>
@@ -656,6 +657,7 @@ main (int argc, const char *argv[])
 #ifdef LIBMQTT
       if (mqtthost)
       {                         // Handling MQTT only
+         openlog ("galaxy", LOG_CONS | LOG_PID, LOG_USER);
          ip = poptGetArg (optCon);
          if (poptPeekArg (optCon))
             errx (1, "One aircon only for MQTT operation");
@@ -721,6 +723,7 @@ main (int argc, const char *argv[])
             rc = rc;
             if (sqldebug)
                warnx ("MQTT disconnect %s", mqtthost);
+            syslog (LOG_INFO, "MQTT disconnected %s", mqtthost);
             e = mosquitto_reconnect (mqtt);
             if (e)
                errx (1, "MQTT reconnect failed (%s) %s", mqtthost, mosquitto_strerror (e));
@@ -731,6 +734,7 @@ main (int argc, const char *argv[])
             char *topic = msg->topic;
             if (sqldebug)
                warnx ("MQTT message %s %.*s", topic, msg->payloadlen, (char *) msg->payload);
+            syslog (LOG_INFO, "MQTT message %s %.*s", topic, msg->payloadlen, (char *) msg->payload);
             int l = strlen (mqttcmnd);
             if (strncmp (topic, mqttcmnd, l) || topic[l] != '/')
                return;
