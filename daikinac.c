@@ -478,8 +478,8 @@ main (int argc, const char *argv[])
 #ifdef	LIBMQTT
          temp = 0;
          frate = 0;
-	 dt1=0;
-	 thispow=0;
+         dt1 = 0;
+         thispow = 0;
 #endif
          char *url;
          if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
@@ -577,12 +577,13 @@ main (int argc, const char *argv[])
          if (stempq.first)
             flushtemp (&atempq, stempq.first->updated + atemplag, NULL);
          int oldmode = atoi (mode);
+         double newtemp = dt1;
+         char newfrate = frate;
+         int newmode = oldmode;
+	 double offset=0;
          if (atempq.first && stempq.first && atempq.first->updated < now - atempmin && oldmode != 2 && oldmode != 6)
          {                      // Auto temp
-            double newtemp = dt1;
-            char newfrate = frate;
-            int newmode = oldmode;
-            double offset = stempq.sum / stempq.num - atempq.sum / atempq.num;
+            offset = stempq.sum / stempq.num - atempq.sum / atempq.num;
             if (newmode == 4 && offset <= -flip)
             {
                if (sqldebug)
@@ -601,48 +602,6 @@ main (int argc, const char *argv[])
                if (offset > maxoffset)
                   offset = maxoffset;
                newtemp += offset;
-               // Rounding with error dither
-               static double terr = 0;
-               double rtemp = newtemp;
-               newtemp = round ((newtemp - terr) * 2) / 2;      // It gets upset if not .0 or .5
-               terr += newtemp - rtemp;
-               if (sqldebug)
-                  warnx ("Set target %.1lf (%.1lf err %.1lf) atemp %.1lf ave: atemp %.1lf#%d stemp %.1lf#%d offset %.1lf", rtemp,
-                         newtemp, terr, atemp, atempq.sum / atempq.num, atempq.num, stempq.sum / stempq.num, stempq.num, offset);
-            }
-            if (newtemp > maxtemp)
-               newtemp = maxtemp;
-            if (newtemp < mintemp)
-               newtemp = mintemp;
-            if (newtemp != temp)
-            {
-               if (stemp)
-                  free (stemp);
-               if (asprintf (&stemp, "%.1lf", newtemp) < 0)
-                  errx (1, "malloc");
-               changed = 1;
-            }
-            if (newfrate != frate)
-            {
-               if (f_rate)
-                  free (f_rate);
-               if (asprintf (&f_rate, "%c", newfrate) < 0)
-                  errx (1, "malloc");
-               changed = 1;
-            }
-            if (newmode != oldmode)
-            {
-               if (mode)
-                  free (mode);
-               if (asprintf (&mode, "%d", newmode) < 0)
-                  errx (1, "malloc");
-               changed = 1;
-            }
-            if (newfrate != frate || newmode != oldmode)
-            {
-               flushtemp (&atempq, now, NULL);
-               flushtemp (&stempq, now, NULL);
-               flushtemp (&stemplagq, now, NULL);
             }
          } else if (sqldebug)
          {
@@ -652,6 +611,49 @@ main (int argc, const char *argv[])
                warnx ("Not enough temp records (%d) %ds - not auto setting yet", atempq.num, (int) (now - atempq.first->updated));
             else if (oldmode != 2 && oldmode != 6)
                warnx ("Mode %d - not auto setting", oldmode);
+         }
+         if (newtemp > maxtemp)
+            newtemp = maxtemp;
+         if (newtemp < mintemp)
+            newtemp = mintemp;
+         {                      // Rounding temp to 0.5C with error dither
+            static double terr = 0;
+            double rtemp = newtemp;
+            newtemp = round ((newtemp - terr) * 2) / 2; // It gets upset if not .0 or .5
+            terr += newtemp - rtemp;
+            if (sqldebug)
+               warnx ("Set target %.1lf (%.1lf err %.1lf) atemp %.1lf ave: atemp %.1lf#%d stemp %.1lf#%d offset %.1lf", rtemp,
+                      newtemp, terr, atemp, atempq.sum / atempq.num, atempq.num, stempq.sum / stempq.num, stempq.num, offset);
+         }
+         if (newtemp != temp)
+         {
+            if (stemp)
+               free (stemp);
+            if (asprintf (&stemp, "%.1lf", newtemp) < 0)
+               errx (1, "malloc");
+            changed = 1;
+         }
+         if (newfrate != frate)
+         {
+            if (f_rate)
+               free (f_rate);
+            if (asprintf (&f_rate, "%c", newfrate) < 0)
+               errx (1, "malloc");
+            changed = 1;
+         }
+         if (newmode != oldmode)
+         {
+            if (mode)
+               free (mode);
+            if (asprintf (&mode, "%d", newmode) < 0)
+               errx (1, "malloc");
+            changed = 1;
+         }
+         if (newfrate != frate || newmode != oldmode)
+         {
+            flushtemp (&atempq, now, NULL);
+            flushtemp (&stempq, now, NULL);
+            flushtemp (&stemplagq, now, NULL);
          }
       }
 #endif
