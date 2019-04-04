@@ -837,7 +837,7 @@ main (int argc, const char *argv[])
                   xml_write_json (s, stat);
                   fclose (s);
                   char *topic = NULL;
-                  asprintf (&topic, "%s/%s/STATUS", mqtttele, mqtttopic);
+                  asprintf (&topic, "%s/%s/STATE", mqtttele, mqtttopic);
                   e = mosquitto_publish (mqtt, NULL, topic, strlen (statbuf), statbuf, 0, 1);
                   if (sqldebug)
                      warnx ("Publish %s %s", topic, statbuf);
