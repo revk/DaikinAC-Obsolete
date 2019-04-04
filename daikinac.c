@@ -288,10 +288,11 @@ main (int argc, const char *argv[])
                if (mode == 3 || mode == 4)
                {
                   d = strtod (v, NULL);
-                  if (mode == 3)
-                     fprintf (cool, "%c%d %d", stempref < 0 ? 'M' : 'L', x, lasty = (int) (svgheight - (d - svgl) * svgc));
-                  if (mode == 4)
-                     fprintf (heat, "%c%d %d", stempref < 0 ? 'M' : 'L', x, lasty = (int) (svgheight - (d - svgl) * svgc));
+                  if (stempref >= 0)
+                     fprintf (mode == 3 ? cool : heat, "L%d %dL", x, lasty);
+                  else
+                     fprintf (mode == 3 ? cool : heat, "M");
+                  fprintf (mode == 3 ? cool : heat, "%d %d", x, lasty = (int) (svgheight - (d - svgl) * svgc));
                   if (stempref < 0)
                      stempref = x;
                }
@@ -510,7 +511,7 @@ main (int argc, const char *argv[])
 #define	c(x,t,v) if(!strcmp(#x,tag))if(val&&(!x||strcmp(x,val))){if(x)free(x);x=strdup(val);}
             controlfields;
 #undef c
-	    // Note some settings
+            // Note some settings
             if (!strcmp (tag, "pow"))
                thispow = atoi (val);
             else if (!strcmp (tag, "f_rate"))
