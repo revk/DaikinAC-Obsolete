@@ -10,7 +10,6 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/file.h>
-#include <syslog.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdlib.h>
@@ -712,6 +711,7 @@ main (int argc, const char *argv[])
             asprintf (&sub, "%s/%s/#", mqttcmnd, mqtttopic);
             if (sqldebug)
                warnx ("MQTT connect %s for %s", mqtthost, sub);
+            syslog (LOG_INFO, "%s MQTT connected %s", mqtttopic, mqtthost);
             int e = mosquitto_subscribe (mqtt, NULL, sub, 0);
             if (e)
                errx (1, "MQTT subscribe failed %s", mosquitto_strerror (e));
@@ -723,7 +723,7 @@ main (int argc, const char *argv[])
             rc = rc;
             if (sqldebug)
                warnx ("MQTT disconnect %s", mqtthost);
-            syslog (LOG_INFO, "MQTT disconnected %s", mqtthost);
+            syslog (LOG_INFO, "%s MQTT disconnected %s (reconnecting)", mqtttopic, mqtthost);
             e = mosquitto_reconnect (mqtt);
             if (e)
                errx (1, "MQTT reconnect failed (%s) %s", mqtthost, mosquitto_strerror (e));
@@ -734,7 +734,7 @@ main (int argc, const char *argv[])
             char *topic = msg->topic;
             if (sqldebug)
                warnx ("MQTT message %s %.*s", topic, msg->payloadlen, (char *) msg->payload);
-            syslog (LOG_INFO, "MQTT message %s %.*s", topic, msg->payloadlen, (char *) msg->payload);
+            syslog (LOG_INFO, "%s MQTT message %s %.*s", mqtttopic, topic, msg->payloadlen, (char *) msg->payload);
             int l = strlen (mqttcmnd);
             if (strncmp (topic, mqttcmnd, l) || topic[l] != '/')
                return;
