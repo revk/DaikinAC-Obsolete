@@ -75,8 +75,9 @@ main (int argc, const char *argv[])
    double margin = 1;           // Margin out of range for flip or fan auto
    double fanauto = 2;          // Max offset for fan from night to auto
    double maxoffset = 3;        // Max offset
-   int atempage = 1200;         // Moving average temp age
-   int atemplag = 360;          // Lag for stemp->atemp
+   double nightpow = 3;         // Low power - so prone to wide oscillations
+   int atempage = 3600;         // Moving average temp age
+   int atemplag = 300;          // Lag for stemp->atemp
    int atempmin = 600;          // Min for average temp
    int mqttperiod = 60;
    const char *mqttid = NULL;
@@ -213,7 +214,7 @@ main (int argc, const char *argv[])
             xml_t svg = xml_tree_new ("svg");
             xml_element_set_namespace (svg, xml_namespace (svg, NULL, "http://www.w3.org/2000/svg"));
             xml_addf (svg, "@width", "%d", svgwidth);
-            xml_addf (svg, "@height", "%d", svgheight);
+            xml_addf (svg, "@height", "%d", svgheight + 25);
             // Graph data
             int stempref = -1,
                lastmode = 0,
@@ -222,22 +223,26 @@ main (int argc, const char *argv[])
             size_t atemplen = 0,
                htemplen = 0,
                otemplen = 0,
+               mompowlen = 0,
                heatlen = 0,
                coollen = 0,
                dt1len = 0;
             char *atempbuf = NULL,
                *htempbuf = NULL,
                *otempbuf = NULL,
+               *mompowbuf = NULL,
                *heatbuf = NULL,
                *coolbuf = NULL,
                *dt1buf = NULL;
             char atempm = 'M',
                htempm = 'M',
                otempm = 'M',
+               mompowm = 'M',
                dt1m = 'M';
             FILE *atemp = open_memstream (&atempbuf, &atemplen);
             FILE *htemp = open_memstream (&htempbuf, &htemplen);
             FILE *otemp = open_memstream (&otempbuf, &otemplen);
+            FILE *mompow = open_memstream (&mompowbuf, &mompowlen);
             FILE *dt1 = open_memstream (&dt1buf, &dt1len);
             FILE *heat = open_memstream (&heatbuf, &heatlen);
             FILE *cool = open_memstream (&coolbuf, &coollen);
@@ -272,6 +277,13 @@ main (int argc, const char *argv[])
                   d = strtod (v, NULL);
                   fprintf (otemp, "%c%d,%d", otempm, x, (int) (svgheight - (d - svgl) * svgc));
                   otempm = 'L';
+               }
+               v = sql_col (res, "mompow");
+               if (v)
+               {
+                  d = strtod (v, NULL);
+                  fprintf (mompow, "%c%d,%d", mompowm, x, (int) (svgheight + d));
+                  mompowm = 'L';
                }
                v = sql_col (res, "dt1");
                if (v)
@@ -314,6 +326,7 @@ main (int argc, const char *argv[])
             fclose (atemp);
             fclose (htemp);
             fclose (otemp);
+            fclose (mompow);
             fclose (dt1);
             fclose (heat);
             fclose (cool);
@@ -322,10 +335,12 @@ main (int argc, const char *argv[])
             xml_addf (svg, "+path@fill=none@stroke=red@stroke-linecap=round@stroke-linejoin=round@d", atempbuf);
             xml_addf (svg, "+path@fill=none@stroke=green@stroke-linecap=round@stroke-linejoin=round@d", htempbuf);
             xml_addf (svg, "+path@fill=none@stroke=blue@stroke-linecap=round@stroke-linejoin=round@d", otempbuf);
+            xml_addf (svg, "+path@fill=none@stroke=black@stroke-linecap=round@stroke-linejoin=round@d", mompowbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-dasharray=1@d", dt1buf);
             free (atempbuf);
             free (htempbuf);
             free (otempbuf);
+            free (mompowbuf);
             free (dt1buf);
             free (heatbuf);
             free (coolbuf);
@@ -366,6 +381,7 @@ main (int argc, const char *argv[])
       char *control = NULL;
 #ifdef	LIBMQTT
       int thispow = 0;
+      int thismom = 0;
       double temp = 0,
          dt1 = 0;
       char frate = 0;
@@ -377,37 +393,45 @@ main (int argc, const char *argv[])
          temp_t *next;
          time_t updated;
          double temp;
+         double pow;
       };
       typedef struct tempq_s tempq_t;
       struct tempq_s
       {
          temp_t *first,
           *last;
-         double sum;
          int num;
+         double sum;
+         double sumpow;
       };
       tempq_t atempq = { };
       tempq_t stempq = { };
       tempq_t stemplagq = { };
-      void addtemp (tempq_t * q, time_t updated, double temp)
+      double addtemp (tempq_t * q, time_t updated, double temp, double pow)
       {
          if (!updated)
-            return;             // Not set
+            return 0;           // Not set
          if (q->last && q->last->updated >= updated)
-            return;             // Not new
+            return 0;           // Not new
+         double last = 0;
+         if (q->last)
+            last = q->last->temp;
          temp_t *t = malloc (sizeof (*t));
          if (!t)
             errx (1, "malloc");
          t->next = NULL;
          t->updated = updated;
          t->temp = temp;
+         t->pow = pow;
          q->sum += temp;
+         q->sumpow += pow;
          q->num++;
          if (q->last)
             q->last->next = t;
          else
             q->first = t;
          q->last = t;
+         return temp - last;
       }
       void flushtemp (tempq_t * q, time_t ref, tempq_t * req)
       {
@@ -416,9 +440,10 @@ main (int argc, const char *argv[])
             temp_t *t = q->first;
             q->num--;
             q->sum -= t->temp;
+            q->sumpow -= t->pow;
             q->first = t->next;
             if (req)
-               addtemp (req, t->updated, t->temp);
+               addtemp (req, t->updated, t->temp, t->pow);
             free (t);
             if (!q->first)
                q->last = NULL;
@@ -482,6 +507,7 @@ main (int argc, const char *argv[])
          frate = 0;
          dt1 = 0;
          thispow = 0;
+         thismom = 0;
 #endif
          char *url;
          if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
@@ -539,6 +565,8 @@ main (int argc, const char *argv[])
             // Note some settings
             if (!strcmp (tag, "pow"))
                thispow = atoi (val);
+            else if (!strcmp (tag, "mompow"))
+               thismom = atoi (val);
             else if (!strcmp (tag, "f_rate"))
                frate = *val;
             else if (!strcmp (tag, "stemp"))
@@ -572,8 +600,8 @@ main (int argc, const char *argv[])
          if (!atempset || !thispow)
             return;
          time_t now = time (0);
-         addtemp (&stemplagq, now, temp);
-         addtemp (&atempq, atempset, atemp);
+         addtemp (&stemplagq, now, temp, thismom);
+         double delta = addtemp (&atempq, atempset, atemp, thismom);
          flushtemp (&stemplagq, now - atemplag, &stempq);
          flushtemp (&stempq, now - atempage - atemplag, NULL);
          if (stempq.first)
@@ -587,23 +615,44 @@ main (int argc, const char *argv[])
          {                      // Auto temp
             double ave = atempq.sum / atempq.num;
             offset = stempq.sum / stempq.num - ave;
-            if (newmode == 4 && offset <= -flip && ave > temp + margin)
+            if (newmode == 4 && offset <= -flip && ave > dt1 + margin)
             {
                if (sqldebug)
                   warnx ("Switch to cooling (offset %.1lf)", offset);
                newmode = 3;     // Switch to cool
-            } else if (newmode == 3 && offset >= flip && ave < temp - margin)
+            } else if (newmode == 3 && offset >= flip && ave < dt1 - margin)
             {
                if (sqldebug)
                   warnx ("Switch to heating (offset %.1lf)", offset);
                newmode = 4;     // Switch to heat
             } else
             {                   // Adjust
-               if (newfrate == 'B'
-                   && ((newmode == 4 && offset > fanauto && ave < temp - margin)
-                       || (newmode == 3 && offset < -fanauto && ave > temp + margin)))
-                  newfrate = 'A';       // Set auto
                // Set offset
+               // daikinac: Set target 19.3 (19.5 err 0.2) atemp 20.5 ave: atemp 21.2#46 stemp 19.5#48 pow 2.4#46 offset -1.7
+
+               if (newfrate == 'B' && atempq.sumpow / atempq.num < nightpow && ave > dt1 - margin && ave < dt1 + margin)
+               {                // Night mode, apply different logic as it will do ±1C otherwise, which is annoying
+                  if (sqldebug)
+                     warnx ("Night mode delta %.1lf %.1lf", atemp, delta);
+                  if (newmode == 4)
+                  {             // Heat
+                     if (atemp + delta > dt1)
+                        offset = -maxoffset;    // Force off
+                     else
+                        offset = dt1 - ave;     // Aim for dt1
+                  } else if (newmode == 3)
+                  {             // Cool
+                     if (atemp + delta < dt1)
+                        offset = maxoffset;     // Force off
+                     else
+                        offset = dt1 - ave;     // Aim for dt1
+                  }
+               } else           // Otherwise just apply offset, but check for that not working and turn on auto fan if needed
+               if (newfrate == 'B'
+                      && ((newmode == 4 && offset > fanauto && ave < dt1 - margin)
+                             || (newmode == 3 && offset < -fanauto && ave > dt1 + margin)))
+                  newfrate = 'A';       // Set auto
+               // Apply offset
                if (offset > maxoffset)
                   offset = maxoffset;
                if (offset < -maxoffset)
@@ -629,8 +678,9 @@ main (int argc, const char *argv[])
             newtemp = round ((newtemp - terr) * 2) / 2; // It gets upset if not .0 or .5
             terr += newtemp - rtemp;
             if (sqldebug)
-               warnx ("Set target %.1lf (%.1lf err %.1lf) atemp %.1lf ave: atemp %.1lf#%d stemp %.1lf#%d offset %.1lf", rtemp,
-                      newtemp, terr, atemp, atempq.sum / atempq.num, atempq.num, stempq.sum / stempq.num, stempq.num, offset);
+               warnx ("Set target %.1lf (%.1lf err %.1lf) atemp %.1lf ave: atemp %.1lf#%d stemp %.1lf#%d pow %.1lf#%d offset %.1lf",
+                      rtemp, newtemp, terr, atemp, atempq.sum / (atempq.num ? : 1), atempq.num, stempq.sum / (stempq.num ? : 1),
+                      stempq.num, atempq.sumpow / (atempq.num ? : 1), atempq.num, offset);
          }
          if (newtemp != temp)
          {
@@ -733,8 +783,9 @@ main (int argc, const char *argv[])
                if (!v)
                   continue;
                double stemp = strtod (v, NULL);
-               addtemp (&atempq, updated, atemp);
-               addtemp (&stemplagq, updated, stemp);
+               int mompow = atoi (sql_colz (res, "mompow"));
+               addtemp (&atempq, updated, atemp, mompow);
+               addtemp (&stemplagq, updated, stemp, mompow);
             }
             sql_free_result (res);
          }
