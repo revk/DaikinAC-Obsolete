@@ -75,7 +75,7 @@ main (int argc, const char *argv[])
    double margin = 1;           // Margin out of range for flip or fan auto
    double fanauto = 2;          // Max offset for fan from night to auto
    double maxoffset = 3;        // Max offset
-   double nightpow = 3;         // Low power - so prone to wide oscillations
+   double nightpow = 4;         // Low power - so prone to wide oscillations
    int atempage = 3600;         // Moving average temp age
    int atemplag = 300;          // Lag for stemp->atemp
    int atempmin = 600;          // Min for average temp
@@ -639,13 +639,13 @@ main (int argc, const char *argv[])
                      if (atemp + delta > dt1)
                         offset = -maxoffset;    // Force off
                      else
-                        offset = dt1 - ave;     // Aim for dt1
+                        offset = dt1 - ave + margin;    // Aim for dt1
                   } else if (newmode == 3)
                   {             // Cool
                      if (atemp + delta < dt1)
                         offset = maxoffset;     // Force off
                      else
-                        offset = dt1 - ave;     // Aim for dt1
+                        offset = dt1 - ave - margin;    // Aim for dt1
                   }
                } else           // Otherwise just apply offset, but check for that not working and turn on auto fan if needed
                if (newfrate == 'B'
