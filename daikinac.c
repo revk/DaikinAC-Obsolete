@@ -23,8 +23,6 @@
 #include <curl/curl.h>
 #ifdef SQLLIB
 #include <sqllib.h>
-#else
-int sqldebug = 0;               // General debug
 #endif
 #ifdef LIBMQTT
 #include <mosquitto.h>
@@ -40,6 +38,237 @@ int sqldebug = 0;               // General debug
 	c(shum, Numidity, %)		\
 	c(f_rate, Fan, A/B/3-7)		\
 	c(f_dir, Fan dir, 0-3)		\
+
+int mqttdebug = 0;
+int curldebug = 0;
+int debug = 0;
+
+#ifdef LIBMQTT                  // Auto settings are done based on MQTT cmnd/[name]/atemp periodically
+double maxtemp = 30;            // Aircon temp range allowed
+double mintemp = 18;
+double flip = 3;                // Max offset for flip
+double maxroffset = 3;          // Max offset to apply (reverse)
+double maxfoffset = 5;          // Max offset to apply (forward)
+double margin = 1;              // Delta adjust threshold
+int mqttperiod = 60;            // Logging period
+int resetlag = 600;             // Wait for any major change to stabilise
+int maxsamples = 60;            // For average logic
+int minsamples = 10;            // For average logic
+const char *mqttid = NULL;      // MQTT settings
+const char *mqtthost = NULL;
+const char *mqttuser = NULL;
+const char *mqttpass = NULL;
+const char *mqtttopic = "diakin";
+const char *mqttcmnd = "cmnd";
+const char *mqtttele = "tele";
+
+        // This function does automatic temperature adjust
+        // If SQL available it is called at start with recent data, in order to catch up any state it needs
+        // Its job is to process current temp and settings and make any needed changes to settings
+typedef struct temp_s temp_t;
+struct temp_s
+{
+   temp_t *next;
+   time_t updated;
+   double temp;
+   double pow;
+};
+typedef struct tempq_s tempq_t;
+struct tempq_s
+{
+   temp_t *first,
+    *last;
+   int num;
+   double sum;
+   double sumpow;
+};
+tempq_t atempq = { };
+tempq_t stempq = { };
+tempq_t stemplagq = { };
+
+double
+addtemp (tempq_t * q, time_t updated, double temp, double pow)
+{
+   if (!updated)
+      return 0;                 // Not set
+   if (q->last && q->last->updated >= updated)
+      return 0;                 // Not new
+   double last = 0;
+   if (q->last)
+      last = q->last->temp;
+   temp_t *t = malloc (sizeof (*t));
+   if (!t)
+      errx (1, "malloc");
+   t->next = NULL;
+   t->updated = updated;
+   t->temp = temp;
+   t->pow = pow;
+   q->sum += temp;
+   q->sumpow += pow;
+   q->num++;
+   if (q->last)
+      q->last->next = t;
+   else
+      q->first = t;
+   q->last = t;
+   return temp - last;
+}
+
+void
+flushtemp (tempq_t * q, time_t ref, tempq_t * req)
+{
+   while (q->first && q->first->updated <= ref)
+   {
+      temp_t *t = q->first;
+      q->num--;
+      q->sum -= t->temp;
+      q->sumpow -= t->pow;
+      q->first = t->next;
+      if (req)
+         addtemp (req, t->updated, t->temp, t->pow);
+      free (t);
+      if (!q->first)
+         q->last = NULL;
+   }
+}
+
+void
+doauto (double *stempp, char *f_ratep, int *modep,      //
+        int pow, int mompow, time_t updated, double atemp, double target)
+{                               // Temp control. stemp/f_rate/mode are inputs and outputs
+   // Get values
+   double stemp = *stempp;
+   char f_rate = *f_ratep;
+   int mode = *modep;
+   // state
+   static double lasttarget = -999;     // Last values to spot changes
+   static int lastmode = 0;     //
+   static char lastf_rate = 0;  //
+   static double offset = 0;    // Offset from target to set
+   static time_t reset = 0;     // Change caused reset - this is when to start collecting data again
+   static double delta = 0.01;  // Adjustment to offset (dynamic)
+   static double *t = NULL;     // Samples for averaging data
+   static int sample = 0;
+   if (!t)
+      t = malloc (sizeof (*t) * maxsamples);    // Averaging data
+
+   // Default
+   *stempp = target + offset;   // Default
+
+   // Changes
+   if (lasttarget != target)
+   {                            // Assume offset still OK
+      if (debug > 1 && reset < updated)
+         warnx ("Target change - resetting");
+      lasttarget = target;
+      reset = updated + resetlag;
+   }
+   if (lastf_rate != f_rate)
+   {                            // Assume offset needs resetting
+      if (debug > 1 && reset < updated)
+         warnx ("Fan change - resetting");
+      lastf_rate = f_rate;
+      offset = 0;
+      reset = updated + resetlag;
+   }
+   if (lastmode != mode)
+   {                            // Assume offset needs resetting
+      if (debug > 1 && reset < updated)
+         warnx ("Mode change - resetting");
+      lastmode = mode;
+      offset = 0;
+      reset = updated + resetlag;
+   }
+   if (!pow)
+   {                            // Power off - assume offset needs resetting
+      if (debug > 1 && reset < updated)
+         warnx ("Power off - resetting");
+      offset = 0;
+      reset = updated + resetlag;
+   }
+
+   int s;
+   if (updated < reset)
+   {                            // Waiting for startup or major change - reset data
+      for (s = 0; s < maxsamples; s++)
+         t[s] = -99;
+      delta = 0.01;             // Reset delta
+      if (debug > 1)
+         warnx ("Waiting to settle (%ds) %.1lf", (int) (reset - updated), atemp);
+      return;
+   }
+   t[sample++] = atemp;
+   if (sample >= maxsamples)
+      sample = 0;
+   double min = 0,
+      max = 0;
+   int count = 0;
+   for (s = 0; s < maxsamples; s++)
+   {
+      if (t[s] == -99)
+         continue;
+      if (!count || t[s] < min)
+         min = t[s];
+      if (!count || t[s] > max)
+         max = t[s];
+      count++;
+   }
+   if (count < minsamples)
+   {
+      if (debug > 1)
+         warnx ("Collecting samples (%d/%d) %.1lf", count, minsamples, atemp);
+      return;
+   }
+   double ave = (min + max) / 2;        // Using this rather than moving average as phase of oscillations is unpredicable
+
+   // Dynamic delta adjust (a tad experimental)
+   if (max - min > margin && delta > 0.01)
+      delta *= 0.9;
+   else if (delta < 0.2 && (ave < target - delta * 2 || ave > target + delta * 2))
+      delta /= 0.9;
+
+   // Adjust offset
+   if (ave < target)
+      offset += delta;
+   else if (ave > target)
+      offset -= delta;
+
+   // Check if we need to change mode
+   if (mode == 4 && offset <= -flip)
+      mode = 3;                 // Heating and we are still too high so switch to cool
+   else if (mode == 3 && offset >= flip)
+      mode = 4;                 // Cooling and we are still too low so switch to head
+
+   // Limit offset
+   if (mode == 4 && offset > maxfoffset)
+   {
+      if (f_rate == 'B')
+         f_rate = 'A';          // Give up on night mode
+      offset = maxfoffset;
+   } else if (mode == 4 && offset < -maxroffset)
+      offset = -maxroffset;
+   else if (mode == 4 && offset < -maxfoffset)
+   {
+      if (f_rate == 'B')
+         f_rate = 'A';          // Give up on night mode
+      offset = -maxfoffset;
+   } else if (mode == 4 && offset > maxroffset)
+      offset = maxroffset;
+
+   // Apply new temp
+   stemp = target + offset;     // Apply offset
+
+   if (debug > 1)
+      warnx ("Temp %.1lf Mode %d F_rate %c Target %.1lf Offset %.1lf Ave %.1lf(%d) Min %.1lf Max %.1lf Delta %.2lf", atemp, mode,
+             f_rate, target, offset, ave, count, min, max, delta);
+
+   // Write back
+   *stempp = stemp;
+   *f_ratep = f_rate;
+   *modep = mode;
+}
+#endif
+
 
 int
 main (int argc, const char *argv[])
@@ -68,26 +297,6 @@ main (int argc, const char *argv[])
       modedry = 0,
       modefan = 0,
       dolock = 0;
-#ifdef LIBMQTT
-   double maxtemp = 30;         // Aircon temp range allowed
-   double mintemp = 18;
-   double flip = 3;             // Max offset for flip
-   double margin = 1;           // Margin out of range for flip or fan auto
-   double fanauto = 2;          // Max offset for fan from night to auto
-   double maxoffset = 3;        // Max offset
-   double nightpow = 4;         // Low power - so prone to wide oscillations
-   int atempage = 3600;         // Moving average temp age
-   int atemplag = 300;          // Lag for stemp->atemp
-   int atempmin = 600;          // Min for average temp
-   int mqttperiod = 60;
-   const char *mqttid = NULL;
-   const char *mqtthost = NULL;
-   const char *mqttuser = NULL;
-   const char *mqttpass = NULL;
-   const char *mqtttopic = "diakin";
-   const char *mqttcmnd = "cmnd";
-   const char *mqtttele = "tele";
-#endif
    {                            // POPT
       poptContext optCon;       // context for parsing command-line options
       const struct poptOption optionsTable[] = {
@@ -107,6 +316,7 @@ main (int argc, const char *argv[])
          { "log", 'l', POPT_ARG_STRING, &db, 0, "Log", "database"},
          { "table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
          { "svg", 0, POPT_ARG_STRING, &svgdate, 0, "Make SVG", "YYYY-MM-DD"},
+         { "sql-debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"},
 #endif
 #ifdef LIBMQTT
          { "mqtt-host", 'h', POPT_ARG_STRING, &mqtthost, 0, "MQTT host", "hostname"},
@@ -117,16 +327,17 @@ main (int argc, const char *argv[])
          { "mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
          { "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
          { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
-         { "margin", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &margin, 0, "Max beyond temp before flip or fan auto", "C"},
          { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max reverse offset to flip modes", "C"},
-         { "fan-auto", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &fanauto, 0, "Max forward offset to switch to auto fan from night", "C"},
-         { "max-offset", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxoffset, 0, "Max forward offset to apply", "C"},
-         { "atemp-age", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempage, 0, "Time over which to run moving average for adjustment", "Seconds"},
-         { "atemp-lag", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atemplag, 0, "Time lag from setting new temp to expecting to see it", "Seconds"},
-         { "atemp-min", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &atempmin, 0, "Min time for samples before applying adjustment", "Seconds"},
+         { "max-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &maxsamples, 0, "Max samples used for averaging", "N"},
+         { "min-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &minsamples, 0, "Min samples used for averaging", "N"},
+         { "max-forward", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxfoffset, 0, "Max forward offset to apply", "C"},
+         { "max-reverse", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxroffset, 0, "Max reverse offset to apply", "C"},
          { "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
+         { "mqtt-debug", 'v', POPT_ARG_NONE, &mqttdebug, 0, "Debug"},
 #endif
-         { "debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"}, POPT_AUTOHELP { }
+         { "curl-debug", 'v', POPT_ARG_NONE, &curldebug, 0, "Debug"},
+         { "debug", 'v', POPT_ARG_NONE, &debug, 0, "Debug"},
+	 POPT_AUTOHELP { }
 		 // *INDENT-ON*
       };
 
@@ -163,6 +374,8 @@ main (int argc, const char *argv[])
       CURL *curl = curl_easy_init ();
       curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 10L);
       curl_easy_setopt (curl, CURLOPT_TIMEOUT, 60L);
+      if (curldebug)
+         curl_easy_setopt (curl, CURLOPT_VERBOSE, 1L);
 
       char *get (char *url)
       {                         // Get from URL (frees URL, malloced reply)
@@ -180,13 +393,13 @@ main (int argc, const char *argv[])
          if ((code / 100) != 2)
          {
             syslog (LOG_INFO, "Failed %s", url);
-            if (sqldebug)
+            if (debug)
                warnx ("Result %ld for %s\n", code, url);
             if (reply)
                free (reply);
             return NULL;
          }
-         if (sqldebug)
+         if (curldebug)
             fprintf (stderr, "Request:\t%s\nReply:\t%s\n", url, reply);
          free (url);
          return reply;
@@ -381,74 +594,13 @@ main (int argc, const char *argv[])
       char *control = NULL;
 #ifdef	LIBMQTT
       int thispow = 0;
-      int thismom = 0;
-      double temp = 0,
-         dt1 = 0;
-      char frate = 0;
+      int thismompow = 0;
+      int thismode = 0;
+      double thisstemp = 0,
+         thisdt1 = 0;
+      char thisf_rate = 0;
       time_t atempset = 0;      // Time last set
       double atemp = 0;         // Last set
-      typedef struct temp_s temp_t;
-      struct temp_s
-      {
-         temp_t *next;
-         time_t updated;
-         double temp;
-         double pow;
-      };
-      typedef struct tempq_s tempq_t;
-      struct tempq_s
-      {
-         temp_t *first,
-          *last;
-         int num;
-         double sum;
-         double sumpow;
-      };
-      tempq_t atempq = { };
-      tempq_t stempq = { };
-      tempq_t stemplagq = { };
-      double addtemp (tempq_t * q, time_t updated, double temp, double pow)
-      {
-         if (!updated)
-            return 0;           // Not set
-         if (q->last && q->last->updated >= updated)
-            return 0;           // Not new
-         double last = 0;
-         if (q->last)
-            last = q->last->temp;
-         temp_t *t = malloc (sizeof (*t));
-         if (!t)
-            errx (1, "malloc");
-         t->next = NULL;
-         t->updated = updated;
-         t->temp = temp;
-         t->pow = pow;
-         q->sum += temp;
-         q->sumpow += pow;
-         q->num++;
-         if (q->last)
-            q->last->next = t;
-         else
-            q->first = t;
-         q->last = t;
-         return temp - last;
-      }
-      void flushtemp (tempq_t * q, time_t ref, tempq_t * req)
-      {
-         while (q->first && q->first->updated <= ref)
-         {
-            temp_t *t = q->first;
-            q->num--;
-            q->sum -= t->temp;
-            q->sumpow -= t->pow;
-            q->first = t->next;
-            if (req)
-               addtemp (req, t->updated, t->temp, t->pow);
-            free (t);
-            if (!q->first)
-               q->last = NULL;
-         }
-      }
 #endif
       const char *ip;
 #define c(x,t,v) char *x=NULL;  // Current settings
@@ -503,11 +655,11 @@ main (int argc, const char *argv[])
          // Reset
          changed = 0;
 #ifdef	LIBMQTT
-         temp = 0;
-         frate = 0;
-         dt1 = 0;
+         thisstemp = 0;
+         thisf_rate = 0;
+         thisdt1 = 0;
          thispow = 0;
-         thismom = 0;
+         thismompow = 0;
 #endif
          char *url;
          if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
@@ -565,14 +717,16 @@ main (int argc, const char *argv[])
             // Note some settings
             if (!strcmp (tag, "pow"))
                thispow = atoi (val);
+            else if (!strcmp (tag, "mode"))
+               thismode = atoi (val);
             else if (!strcmp (tag, "mompow"))
-               thismom = atoi (val);
+               thismompow = atoi (val);
             else if (!strcmp (tag, "f_rate"))
-               frate = *val;
+               thisf_rate = *val;
             else if (!strcmp (tag, "stemp"))
-               temp = strtod (val, NULL);
+               thisstemp = strtod (val, NULL);
             else if (!strcmp (tag, "dt1"))
-               dt1 = strtod (val, NULL);
+               thisdt1 = strtod (val, NULL);
          }
          scan (sensor, check);
          scan (control, check);
@@ -594,126 +748,6 @@ main (int argc, const char *argv[])
          char *ok = get (url);
          free (ok);
       }
-#ifdef LIBMQTT
-      void doauto (void)
-      {                         // Temp control
-         if (!atempset || !thispow)
-            return;
-         time_t now = time (0);
-         addtemp (&stemplagq, now, temp, thismom);
-         double delta = addtemp (&atempq, atempset, atemp, thismom);
-         flushtemp (&stemplagq, now - atemplag, &stempq);
-         flushtemp (&stempq, now - atempage - atemplag, NULL);
-         if (stempq.first)
-            flushtemp (&atempq, stempq.first->updated + atemplag, NULL);
-         int oldmode = atoi (mode);
-         double newtemp = dt1;
-         char newfrate = frate;
-         int newmode = oldmode;
-         double offset = 0;
-         if (atempq.first && stempq.first && atempq.first->updated < now - atempmin && oldmode != 2 && oldmode != 6)
-         {                      // Auto temp
-            double ave = atempq.sum / atempq.num;
-            offset = stempq.sum / stempq.num - ave;
-            if (newmode == 4 && offset <= -flip && ave > dt1 + margin)
-            {
-               if (sqldebug)
-                  warnx ("Switch to cooling (offset %.1lf)", offset);
-               newmode = 3;     // Switch to cool
-            } else if (newmode == 3 && offset >= flip && ave < dt1 - margin)
-            {
-               if (sqldebug)
-                  warnx ("Switch to heating (offset %.1lf)", offset);
-               newmode = 4;     // Switch to heat
-            } else
-            {                   // Adjust
-               // Set offset
-               // daikinac: Set target 19.3 (19.5 err 0.2) atemp 20.5 ave: atemp 21.2#46 stemp 19.5#48 pow 2.4#46 offset -1.7
-
-               if (newfrate == 'B' && atempq.sumpow / atempq.num < nightpow && ave > dt1 - margin && ave < dt1 + margin)
-               {                // Night mode, apply different logic as it will do ±1C otherwise, which is annoying
-                  if (sqldebug)
-                     warnx ("Night mode delta %.1lf %.1lf", atemp, delta);
-                  if (newmode == 4)
-                  {             // Heat
-                     if (atemp + delta > dt1)
-                        offset = -maxoffset;    // Force off
-                     else
-                        offset = dt1 - ave + margin;    // Aim for dt1
-                  } else if (newmode == 3)
-                  {             // Cool
-                     if (atemp + delta < dt1)
-                        offset = maxoffset;     // Force off
-                     else
-                        offset = dt1 - ave - margin;    // Aim for dt1
-                  }
-               } else           // Otherwise just apply offset, but check for that not working and turn on auto fan if needed
-               if (newfrate == 'B'
-                      && ((newmode == 4 && offset > fanauto && ave < dt1 - margin)
-                             || (newmode == 3 && offset < -fanauto && ave > dt1 + margin)))
-                  newfrate = 'A';       // Set auto
-               // Apply offset
-               if (offset > maxoffset)
-                  offset = maxoffset;
-               if (offset < -maxoffset)
-                  offset = -maxoffset;
-               newtemp += offset;
-            }
-         } else if (sqldebug)
-         {
-            if (!atempq.first)
-               warnx ("No temp records - not auto setting");
-            else if (atempq.first->updated >= now - atempmin)
-               warnx ("Not enough temp records (%d) %ds - not auto setting yet", atempq.num, (int) (now - atempq.first->updated));
-            else if (oldmode != 2 && oldmode != 6)
-               warnx ("Mode %d - not auto setting", oldmode);
-         }
-         if (newtemp > maxtemp)
-            newtemp = maxtemp;
-         if (newtemp < mintemp)
-            newtemp = mintemp;
-         {                      // Rounding temp to 0.5C with error dither
-            static double terr = 0;
-            double rtemp = newtemp;
-            newtemp = round ((newtemp - terr) * 2) / 2; // It gets upset if not .0 or .5
-            terr += newtemp - rtemp;
-            if (sqldebug)
-               warnx ("Set target %.1lf (%.1lf err %.1lf) atemp %.1lf ave: atemp %.1lf#%d stemp %.1lf#%d pow %.1lf#%d offset %.1lf",
-                      rtemp, newtemp, terr, atemp, atempq.sum / (atempq.num ? : 1), atempq.num, stempq.sum / (stempq.num ? : 1),
-                      stempq.num, atempq.sumpow / (atempq.num ? : 1), atempq.num, offset);
-         }
-         if (newtemp != temp)
-         {
-            if (stemp)
-               free (stemp);
-            if (asprintf (&stemp, "%.1lf", newtemp) < 0)
-               errx (1, "malloc");
-            changed = 1;
-         }
-         if (newfrate != frate)
-         {
-            if (f_rate)
-               free (f_rate);
-            if (asprintf (&f_rate, "%c", newfrate) < 0)
-               errx (1, "malloc");
-            changed = 1;
-         }
-         if (newmode != oldmode)
-         {
-            if (mode)
-               free (mode);
-            if (asprintf (&mode, "%d", newmode) < 0)
-               errx (1, "malloc");
-            changed = 1;
-         }
-         if (newfrate != frate || newmode != oldmode)
-         {
-            flushtemp (&atempq, now, NULL);
-            flushtemp (&stempq, now, NULL);
-            flushtemp (&stemplagq, now, NULL);
-         }
-      }
-#endif
 
       void updatedb (void)
       {
@@ -751,30 +785,13 @@ main (int argc, const char *argv[])
             errx (1, "One aircon only for MQTT operation");
 #ifdef	SQLLIB
          if (db)
-         {                      // Load temp history from database
-            int lastmode = 0;
-            char lastfrate = 0;
+         {                      // Re-run history from database so auto can catch up to current state
             SQL_RES *res = sql_safe_query_store_free (&sql,
                                                       sql_printf
-                                                      ("SELECT * FROM `%#S` WHERE `ip`=%#s AND `Updated`>=%#T ORDER BY `Updated`",
-                                                       table, ip, time (0) - atempage - atemplag - mqttperiod));
+                                                      ("SELECT * FROM `%#S` WHERE `ip`=%#s AND `Updated`>=date_sub(now(),interval 1 day) ORDER BY `Updated`",
+                                                       table, ip));
             while (sql_fetch_row (res))
             {
-               int pow = atoi (sql_colz (res, "pow"));
-               if (!pow)
-                  continue;     // Only powered on readings, duh
-               int mode = atoi (sql_colz (res, "mode"));
-               char frate = *sql_colz (res, "f_rate");
-               if (mode != lastmode || frate != lastfrate)
-               {                // Mode change, flush and ignore this entry
-                  time_t now = time (0);
-                  flushtemp (&atempq, now, NULL);
-                  flushtemp (&stempq, now, NULL);
-                  flushtemp (&stemplagq, now, NULL);
-                  lastmode = mode;
-                  lastfrate = frate;
-               }
-               time_t updated = xml_time (sql_colz (res, "updated"));
                char *v = sql_col (res, "atemp");
                if (!v)
                   continue;
@@ -783,9 +800,16 @@ main (int argc, const char *argv[])
                if (!v)
                   continue;
                double stemp = strtod (v, NULL);
+               v = sql_col (res, "dt1");
+               if (!v)
+                  continue;
+               double target = strtod (v, NULL);
+               int mode = atoi (sql_colz (res, "mode"));
+               char f_rate = *sql_colz (res, "f_rate");
+               time_t updated = xml_time (sql_colz (res, "updated"));
                int mompow = atoi (sql_colz (res, "mompow"));
-               addtemp (&atempq, updated, atemp, mompow);
-               addtemp (&stemplagq, updated, stemp, mompow);
+               int pow = atoi (sql_colz (res, "pow"));
+               doauto (&stemp, &f_rate, &mode, pow, mompow, updated, atemp, target);
             }
             sql_free_result (res);
          }
@@ -801,7 +825,7 @@ main (int argc, const char *argv[])
             rc = rc;
             char *sub = NULL;
             asprintf (&sub, "%s/%s/#", mqttcmnd, mqtttopic);
-            if (sqldebug)
+            if (mqttdebug)
                warnx ("MQTT connect %s for %s", mqtthost, sub);
             syslog (LOG_INFO, "%s MQTT connected %s", mqtttopic, mqtthost);
             int e = mosquitto_subscribe (mqtt, NULL, sub, 0);
@@ -813,7 +837,7 @@ main (int argc, const char *argv[])
          {
             obj = obj;
             rc = rc;
-            if (sqldebug)
+            if (mqttdebug)
                warnx ("MQTT disconnect %s", mqtthost);
             syslog (LOG_INFO, "%s MQTT disconnected %s (reconnecting)", mqtttopic, mqtthost);
             e = mosquitto_reconnect (mqtt);
@@ -824,7 +848,7 @@ main (int argc, const char *argv[])
          {
             obj = obj;
             char *topic = msg->topic;
-            if (sqldebug)
+            if (mqttdebug)
                warnx ("MQTT message %s %.*s", topic, msg->payloadlen, (char *) msg->payload);
             syslog (LOG_INFO, "%s MQTT message %s %.*s", mqtttopic, topic, msg->payloadlen, (char *) msg->payload);
             int l = strlen (mqttcmnd);
@@ -883,6 +907,11 @@ main (int argc, const char *argv[])
          e = mosquitto_connect (mqtt, mqtthost, 1883, 60);
          if (e)
             errx (1, "MQTT connect failed (%s) %s", mqtthost, mosquitto_strerror (e));
+         if (debug)
+         {
+            debug++;
+            warnx ("Starting service");
+         }
          while (1)
          {
             time_t now = time (0);
@@ -893,7 +922,49 @@ main (int argc, const char *argv[])
                if (getstatus ())
                {
                   updatestatus ();
-                  doauto ();
+                  if (atempset)
+                  {             // Automatic processing
+                     double newstemp = thisstemp;
+                     char newf_rate = thisf_rate;
+                     int newmode = thismode;
+                     doauto (&newstemp, &newf_rate, &newmode, thispow, thismompow, atempset, atemp, thisdt1);
+                     {          // Rounding temp to 0.5C with error dither
+                        static double dither = 0;
+                        double rtemp = newstemp;
+                        newstemp = round ((newstemp - dither) * 2) / 2; // It gets upset if not .0 or .5
+                        dither += newstemp - rtemp;
+                     }
+                     if (newstemp > maxtemp)
+                        newstemp = maxtemp;
+                     else if (newstemp < mintemp)
+                        newstemp = mintemp;
+                     // Apply changes
+                     if (newstemp != thisstemp)
+                     {
+                        if (stemp)
+                           free (stemp);
+                        if (asprintf (&stemp, "%.1lf", newstemp) < 0)
+                           errx (1, "malloc");
+                        changed = 1;
+                     }
+                     if (newf_rate != thisf_rate)
+                     {
+                        if (f_rate)
+                           free (f_rate);
+                        if (asprintf (&f_rate, "%c", newf_rate) < 0)
+                           errx (1, "malloc");
+                        changed = 1;
+                     }
+                     if (newmode != thismode)
+                     {
+                        if (mode)
+                           free (mode);
+                        if (asprintf (&mode, "%d", newmode) < 0)
+                           errx (1, "malloc");
+                        changed = 1;
+                     }
+                  }
+
                   if (changed)
                      updatesettings (sensor, control);
                   updatedb ();
@@ -919,7 +990,7 @@ main (int argc, const char *argv[])
                   char *topic = NULL;
                   asprintf (&topic, "%s/%s/STATE", mqtttele, mqtttopic);
                   e = mosquitto_publish (mqtt, NULL, topic, strlen (statbuf), statbuf, 0, 1);
-                  if (sqldebug)
+                  if (mqttdebug)
                      warnx ("Publish %s %s", topic, statbuf);
                   free (topic);
                   free (statbuf);
