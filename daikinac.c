@@ -265,14 +265,22 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    if (mode == 4 && offset > maxfoffset)
    {
       if (f_rate == 'B')
+      {
+         if (debug > 1)
+            warnx ("Changing to fan mode Auto");
          f_rate = 'A';          // Give up on night mode
+      }
       offset = maxfoffset;
    } else if (mode == 4 && offset < -maxroffset)
       offset = -maxroffset;
    else if (mode == 4 && offset < -maxfoffset)
    {
       if (f_rate == 'B')
+      {
+         if (debug > 1)
+            warnx ("Changing to fan mode Auto");
          f_rate = 'A';          // Give up on night mode
+      }
       offset = -maxfoffset;
    } else if (mode == 4 && offset > maxroffset)
       offset = maxroffset;
