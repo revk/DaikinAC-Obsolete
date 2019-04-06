@@ -159,35 +159,46 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    *stempp = target + offset;   // Default
 
    // Changes
+   void resetdata (void)
+   {                            // Reset average (set to start collecting after a lag) - used when a change happens
+      reset = updated + resetlag;
+   }
+   void resetoffset (void)
+   {                            // Reset the offset (allow for mode B being silly)
+      if (f_rate == 'B' && mode == 4)
+         offset = 3;            // Mode B has wide margin
+      else if (f_rate == 'B' && mode == 3)
+         offset = -3;           // Mode B has wide margin
+      else
+         offset = 0;
+      resetdata ();
+   }
    if (lasttarget != target)
    {                            // Assume offset still OK
       if (debug > 1 && reset < updated)
          warnx ("Target change - resetting");
       lasttarget = target;
-      reset = updated + resetlag;
+      resetdata ();
    }
    if (lastf_rate != f_rate)
    {                            // Assume offset needs resetting
       if (debug > 1 && reset < updated)
          warnx ("Fan change - resetting");
       lastf_rate = f_rate;
-      offset = 0;
-      reset = updated + resetlag;
+      resetoffset ();
    }
    if (lastmode != mode)
    {                            // Assume offset needs resetting
       if (debug > 1 && reset < updated)
          warnx ("Mode change to %s - resetting", modename[mode]);
       lastmode = mode;
-      offset = 0;
-      reset = updated + resetlag;
+      resetoffset ();
    }
    if (!pow)
    {                            // Power off - assume offset needs resetting
       if (debug > 1 && reset < updated)
          warnx ("Power off - resetting");
-      offset = 0;
-      reset = updated + resetlag;
+      resetoffset ();
    }
    if (mode == 2 || mode == 6)
    {
