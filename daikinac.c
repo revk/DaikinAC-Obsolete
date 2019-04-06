@@ -51,8 +51,12 @@ double mintemp = 18;
 double flip = 3;                // Max offset for flip
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
+double frateaoffset = 1;        // Extra forward for f_rate A
 double frateboffset = 4;        // Extra forward for f_rate B
-double margin = 1;              // Delta adjust threshold
+#if 0
+double deltamargin = 1;         // Delta adjust threshold
+#endif
+double deltabase = 0.02;        // Delta adjust
 int mqttperiod = 60;            // Logging period
 int resetlag = 600;             // Wait for any major change to stabilise
 int maxsamples = 60;            // For average logic
@@ -150,7 +154,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    static double offset = 0;    // Offset from target to set
    static time_t reset = 0;     // Change caused reset - this is when to start collecting data again
    static time_t stepchange = 0;        // Hold off step changes
-   static double delta = 0.01;  // Adjustment to offset (dynamic)
+   static double delta = 0;     // Adjustment to offset
    static double *t = NULL;     // Samples for averaging data
    static int sample = 0;
    if (!t)
@@ -166,10 +170,10 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    }
    void resetoffset (void)
    {                            // Reset the offset (allow for mode B being silly)
-      if (f_rate == 'B' && mode == 4)
-         offset = frateboffset; // Mode B has wide margin
-      else if (f_rate == 'B' && mode == 3)
-         offset = -frateboffset;        // Mode B has wide margin
+      if (mode == 4)
+         offset = (f_rate == 'B' ? frateboffset : frateaoffset);
+      else if (mode == 3)
+         offset = -(f_rate == 'B' ? frateboffset : frateaoffset);
       else
          offset = 0;
       resetdata ();
@@ -213,7 +217,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    {                            // Waiting for startup or major change - reset data
       for (s = 0; s < maxsamples; s++)
          t[s] = -99;
-      delta = 0.01;             // Reset delta
+      delta = deltabase;        // Reset delta
       if (debug > 1)
          warnx ("Waiting to settle (%ds) %.1lf", (int) (reset - updated), atemp);
       return;
@@ -244,7 +248,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
 
 #if 0
    // Dynamic delta adjust (a tad experimental)
-   if (max - min > margin && delta > 0.01)
+   if (max - min > deltamargin && delta > deltabase)
       delta *= 0.9;
    else if (delta < 0.2 && (ave < target - delta * 2 || ave > target + delta * 2))
       delta /= 0.9;
@@ -257,7 +261,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
          warnx ("Step change by %.1lf", target - ave);
       stepchange = updated + resetlag * 2;
       offset += (target - ave);
-      delta = 0.01;             // Reset delta
+      delta = deltabase;        // Reset delta
    } else if (ave < target)
       offset += delta;
    else if (ave > target)
