@@ -51,6 +51,7 @@ double mintemp = 18;
 double flip = 3;                // Max offset for flip
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
+double frateboffset = 4;        // Extra forward for f_rate B
 double margin = 1;              // Delta adjust threshold
 int mqttperiod = 60;            // Logging period
 int resetlag = 600;             // Wait for any major change to stabilise
@@ -166,9 +167,9 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    void resetoffset (void)
    {                            // Reset the offset (allow for mode B being silly)
       if (f_rate == 'B' && mode == 4)
-         offset = 3;            // Mode B has wide margin
+         offset = frateboffset; // Mode B has wide margin
       else if (f_rate == 'B' && mode == 3)
-         offset = -3;           // Mode B has wide margin
+         offset = -frateboffset;        // Mode B has wide margin
       else
          offset = 0;
       resetdata ();
