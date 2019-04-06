@@ -259,7 +259,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    {                            // Step change
       if (debug > 1)
          warnx ("Step change by %.1lf", target - ave);
-      stepchange = updated + resetlag * 2;
+      stepchange = updated + resetlag;
       offset += (target - ave);
       delta = deltabase;        // Reset delta
    } else if (ave < target)
