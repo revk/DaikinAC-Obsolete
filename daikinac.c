@@ -228,7 +228,9 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       delta /= 0.9;
 
    // Adjust offset
-   if (ave < target)
+   if ((mode == 4 && min > target) || (mode == 3 && max < target))
+      offset -= (ave - target);
+   else if (ave < target)
       offset += delta;
    else if (ave > target)
       offset -= delta;
@@ -297,6 +299,7 @@ main (int argc, const char *argv[])
       modedry = 0,
       modefan = 0,
       dolock = 0;
+   int retries = 5;
    {                            // POPT
       poptContext optCon;       // context for parsing command-line options
       const struct poptOption optionsTable[] = {
@@ -316,7 +319,7 @@ main (int argc, const char *argv[])
          { "log", 'l', POPT_ARG_STRING, &db, 0, "Log", "database"},
          { "table", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &table, 0, "Table", "table"},
          { "svg", 0, POPT_ARG_STRING, &svgdate, 0, "Make SVG", "YYYY-MM-DD"},
-         { "sql-debug", 'v', POPT_ARG_NONE, &sqldebug, 0, "Debug"},
+         { "sql-debug", 0, POPT_ARG_NONE, &sqldebug, 0, "Debug"},
 #endif
 #ifdef LIBMQTT
          { "mqtt-host", 'h', POPT_ARG_STRING, &mqtthost, 0, "MQTT host", "hostname"},
@@ -333,10 +336,11 @@ main (int argc, const char *argv[])
          { "max-forward", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxfoffset, 0, "Max forward offset to apply", "C"},
          { "max-reverse", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxroffset, 0, "Max reverse offset to apply", "C"},
          { "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
-         { "mqtt-debug", 'v', POPT_ARG_NONE, &mqttdebug, 0, "Debug"},
+         { "mqtt-debug", 0, POPT_ARG_NONE, &mqttdebug, 0, "Debug"},
 #endif
-         { "curl-debug", 'v', POPT_ARG_NONE, &curldebug, 0, "Debug"},
-         { "debug", 'v', POPT_ARG_NONE, &debug, 0, "Debug"},
+         { "curl-debug", 0, POPT_ARG_NONE, &curldebug, 0, "Debug"},
+         { "curl-retries", 0, POPT_ARG_INT| POPT_ARGFLAG_SHOW_DEFAULT, &retries, 0, "HTTP retries to A/C"},
+         { "debug", 0, POPT_ARG_NONE, &debug, 0, "Debug"},
 	 POPT_AUTOHELP { }
 		 // *INDENT-ON*
       };
@@ -394,9 +398,10 @@ main (int argc, const char *argv[])
          {
             syslog (LOG_INFO, "Failed %s", url);
             if (debug)
-               warnx ("Result %ld for %s\n", code, url);
+               warnx ("Fail %s\n", url);
             if (reply)
                free (reply);
+            free (url);
             return NULL;
          }
          if (curldebug)
@@ -662,18 +667,26 @@ main (int argc, const char *argv[])
          thismompow = 0;
 #endif
          char *url;
-         if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
-            errx (1, "malloc");
-         sensor = get (url);
-         if (!sensor)
+         int tries = retries;
+         while (tries--)
+         {
+            if (asprintf (&url, "http://%s/aircon/get_sensor_info", ip) < 0)
+               errx (1, "malloc");
             sensor = get (url);
+            if (sensor)
+               break;
+         }
          if (!sensor)
             return 0;
-         if (asprintf (&url, "http://%s/aircon/get_control_info", ip) < 0)
-            errx (1, "malloc");
-         control = get (url);
-         if (!control)
+         tries = retries;
+         while (tries--)
+         {
+            if (asprintf (&url, "http://%s/aircon/get_control_info", ip) < 0)
+               errx (1, "malloc");
             control = get (url);
+            if (control)
+               break;
+         }
          if (!control)
             return 0;
          return 1;              // OK
