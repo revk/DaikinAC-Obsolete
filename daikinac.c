@@ -146,6 +146,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    static char lastf_rate = 0;  //
    static double offset = 0;    // Offset from target to set
    static time_t reset = 0;     // Change caused reset - this is when to start collecting data again
+   static time_t stepchange = 0;        // Hold off step changes
    static double delta = 0.01;  // Adjustment to offset (dynamic)
    static double *t = NULL;     // Samples for averaging data
    static int sample = 0;
@@ -228,9 +229,12 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       delta /= 0.9;
 
    // Adjust offset
-   if ((mode == 4 && min > target) || (mode == 3 && max < target))
+   if (stepchange < updated && ((mode == 4 && min > target) || (mode == 3 && max < target)))
+   {                            // Step change
+      stepchange = updated + resetlag * 2;
       offset -= (ave - target);
-   else if (ave < target)
+      delta = 0.01;             // Reset delta
+   } else if (ave < target)
       offset += delta;
    else if (ave > target)
       offset -= delta;
