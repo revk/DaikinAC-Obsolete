@@ -188,7 +188,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    if (lastf_rate != f_rate)
    {                            // Assume offset needs resetting
       if (debug > 1 && reset < updated)
-         warnx ("Fan change - resetting");
+         warnx ("Fan change to %c - resetting",f_rate);
       lastf_rate = f_rate;
       resetoffset ();
    }
