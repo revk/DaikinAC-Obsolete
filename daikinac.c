@@ -188,7 +188,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    if (lastf_rate != f_rate)
    {                            // Assume offset needs resetting
       if (debug > 1 && reset < updated)
-         warnx ("Fan change to %c - resetting",f_rate);
+         warnx ("Fan change to %c - resetting", f_rate);
       lastf_rate = f_rate;
       resetoffset ();
    }
@@ -488,7 +488,7 @@ main (int argc, const char *argv[])
                lastmode = 0,
                lasty = 0,
                x = 0;
-	    char lastf_rate=0;
+            char lastf_rate = 0;
             size_t atemplen = 0,
                htemplen = 0,
                otemplen = 0,
@@ -568,22 +568,22 @@ main (int argc, const char *argv[])
                   dt1m = 'L';
                }
                v = sql_col (res, "stemp");
-	       char f_rate=*sql_colz(res,"f_rate");
+               char f_rate = *sql_colz (res, "f_rate");
                int pow = atoi (sql_colz (res, "pow"));
                int mode = atoi (sql_colz (res, "mode"));
                if (!pow)
                   mode = -1;    // Not on
-               if ((lastf_rate!=f_rate||mode != lastmode) && stempref >= 0)
+               if ((lastf_rate != f_rate || mode != lastmode) && stempref >= 0)
                {                // Close box
                   if (lastmode == 3)
-                     fprintf (lastf_rate=='B'?coolb:cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
+                     fprintf (lastf_rate == 'B' ? coolb : cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
                   if (lastmode == 4)
-                     fprintf (lastf_rate=='B'?heatb:heat, "L%d %dL%d %dL%d %dZ", x, lasty, x, svgheight, stempref, svgheight);
+                     fprintf (lastf_rate == 'B' ? heatb : heat, "L%d %dL%d %dL%d %dZ", x, lasty, x, svgheight, stempref, svgheight);
                   stempref = -1;
                }
                if (mode == 3 || mode == 4)
                {
-		       FILE *f=(mode==3?f_rate=='B'?coolb:cool:f_rate=='B'?heatb:heat);
+                  FILE *f = (mode == 3 ? f_rate == 'B' ? coolb : cool : f_rate == 'B' ? heatb : heat);
                   d = strtod (v, NULL);
                   if (stempref >= 0)
                      fprintf (f, "L%d %dL", x, lasty);
@@ -594,13 +594,13 @@ main (int argc, const char *argv[])
                      stempref = x;
                }
                lastmode = mode;
-	       lastf_rate=f_rate;
+               lastf_rate = f_rate;
             }
             x += svgh / 60;     // Assume minute stats to draw last bar
             if (lastmode == 3)
-               fprintf (cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
+               fprintf (lastf_rate == 'B' ? coolb : cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
             if (lastmode == 4)
-               fprintf (heat, "L%d %dL%d %dL%d %dZ", x, lasty, x, svgheight, stempref, svgheight);
+               fprintf (lastf_rate == 'B' ? heatb : heat, "L%d %dL%d %dL%d %dZ", x, lasty, x, svgheight, stempref, svgheight);
             fclose (atemp);
             fclose (htemp);
             fclose (otemp);
