@@ -242,11 +242,13 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    }
    double ave = (min + max) / 2;        // Using this rather than moving average as phase of oscillations is unpredicable
 
+#if 0
    // Dynamic delta adjust (a tad experimental)
    if (max - min > margin && delta > 0.01)
       delta *= 0.9;
    else if (delta < 0.2 && (ave < target - delta * 2 || ave > target + delta * 2))
       delta /= 0.9;
+#endif
 
    // Adjust offset
    if (stepchange < updated && (min > target || max < target))
