@@ -488,19 +488,24 @@ main (int argc, const char *argv[])
                lastmode = 0,
                lasty = 0,
                x = 0;
+	    char lastf_rate=0;
             size_t atemplen = 0,
                htemplen = 0,
                otemplen = 0,
                mompowlen = 0,
                heatlen = 0,
+               heatblen = 0,
                coollen = 0,
+               coolblen = 0,
                dt1len = 0;
             char *atempbuf = NULL,
                *htempbuf = NULL,
                *otempbuf = NULL,
                *mompowbuf = NULL,
                *heatbuf = NULL,
+               *heatbbuf = NULL,
                *coolbuf = NULL,
+               *coolbbuf = NULL,
                *dt1buf = NULL;
             char atempm = 'M',
                htempm = 'M',
@@ -513,7 +518,9 @@ main (int argc, const char *argv[])
             FILE *mompow = open_memstream (&mompowbuf, &mompowlen);
             FILE *dt1 = open_memstream (&dt1buf, &dt1len);
             FILE *heat = open_memstream (&heatbuf, &heatlen);
+            FILE *heatb = open_memstream (&heatbbuf, &heatblen);
             FILE *cool = open_memstream (&coolbuf, &coollen);
+            FILE *coolb = open_memstream (&coolbbuf, &coolblen);
             SQL_RES *res = sql_safe_query_store_free (&sql,
                                                       sql_printf ("SELECT * FROM `%#S` WHERE `Updated` LIKE '%#S%%' AND `IP`=%#s",
                                                                   table,
@@ -561,30 +568,33 @@ main (int argc, const char *argv[])
                   dt1m = 'L';
                }
                v = sql_col (res, "stemp");
+	       char f_rate=*sql_colz(res,"f_rate");
                int pow = atoi (sql_colz (res, "pow"));
                int mode = atoi (sql_colz (res, "mode"));
                if (!pow)
                   mode = -1;    // Not on
-               if (mode != lastmode && stempref >= 0)
+               if ((lastf_rate!=f_rate||mode != lastmode) && stempref >= 0)
                {                // Close box
                   if (lastmode == 3)
-                     fprintf (cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
+                     fprintf (lastf_rate=='B'?coolb:cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
                   if (lastmode == 4)
-                     fprintf (heat, "L%d %dL%d %dL%d %dZ", x, lasty, x, svgheight, stempref, svgheight);
+                     fprintf (lastf_rate=='B'?heatb:heat, "L%d %dL%d %dL%d %dZ", x, lasty, x, svgheight, stempref, svgheight);
                   stempref = -1;
                }
                if (mode == 3 || mode == 4)
                {
+		       FILE *f=(mode==3?f_rate=='B'?coolb:cool:f_rate=='B'?heatb:heat);
                   d = strtod (v, NULL);
                   if (stempref >= 0)
-                     fprintf (mode == 3 ? cool : heat, "L%d %dL", x, lasty);
+                     fprintf (f, "L%d %dL", x, lasty);
                   else
-                     fprintf (mode == 3 ? cool : heat, "M");
-                  fprintf (mode == 3 ? cool : heat, "%d %d", x, lasty = (int) (svgheight - (d - svgl) * svgc));
+                     fprintf (f, "M");
+                  fprintf (f, "%d %d", x, lasty = (int) (svgheight - (d - svgl) * svgc));
                   if (stempref < 0)
                      stempref = x;
                }
                lastmode = mode;
+	       lastf_rate=f_rate;
             }
             x += svgh / 60;     // Assume minute stats to draw last bar
             if (lastmode == 3)
@@ -597,9 +607,13 @@ main (int argc, const char *argv[])
             fclose (mompow);
             fclose (dt1);
             fclose (heat);
+            fclose (heatb);
             fclose (cool);
-            xml_addf (svg, "+path@fill=red@stroke=none@opacity=0.25@d", heatbuf);
-            xml_addf (svg, "+path@fill=blue@stroke=none@opacity=0.25@d", coolbuf);
+            fclose (coolb);
+            xml_addf (svg, "+path@fill=red@stroke=none@opacity=0.5@d", heatbuf);
+            xml_addf (svg, "+path@fill=red@stroke=none@opacity=0.25@d", heatbbuf);
+            xml_addf (svg, "+path@fill=blue@stroke=none@opacity=0.5@d", coolbuf);
+            xml_addf (svg, "+path@fill=blue@stroke=none@opacity=0.25@d", coolbbuf);
             xml_addf (svg, "+path@fill=none@stroke=red@stroke-linecap=round@stroke-linejoin=round@d", atempbuf);
             xml_addf (svg, "+path@fill=none@stroke=green@stroke-linecap=round@stroke-linejoin=round@d", htempbuf);
             xml_addf (svg, "+path@fill=none@stroke=blue@stroke-linecap=round@stroke-linejoin=round@d", otempbuf);
@@ -611,7 +625,9 @@ main (int argc, const char *argv[])
             free (mompowbuf);
             free (dt1buf);
             free (heatbuf);
+            free (heatbbuf);
             free (coolbuf);
+            free (coolbbuf);
             {
                // Time of day and headings
                int x,
