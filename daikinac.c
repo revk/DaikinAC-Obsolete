@@ -52,7 +52,7 @@ double flip = 3;                // Max offset for flip
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
 double frateaoffset = 1;        // Extra forward for f_rate A
-double frateboffset = 4;        // Extra forward for f_rate B
+double frateboffset = 2;        // Extra forward for f_rate B
 #if 0
 double deltamargin = 1;         // Delta adjust threshold
 #endif
