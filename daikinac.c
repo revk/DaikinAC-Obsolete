@@ -39,6 +39,8 @@
 	c(f_rate, Fan, A/B/3-7)		\
 	c(f_dir, Fan dir, 0-3)		\
 
+const char *modename[] = { "None", "Auto", "Dry", "Cool", "Heat", "Five", "Fan", "Auto" };
+
 int mqttdebug = 0;
 int curldebug = 0;
 int debug = 0;
@@ -175,7 +177,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    if (lastmode != mode)
    {                            // Assume offset needs resetting
       if (debug > 1 && reset < updated)
-         warnx ("Mode change - resetting");
+         warnx ("Mode change to %s - resetting", modename[mode]);
       lastmode = mode;
       offset = 0;
       reset = updated + resetlag;
@@ -190,7 +192,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    if (mode == 2 || mode == 6)
    {
       if (debug > 1 && reset < updated)
-         warnx ("Mode %d - not running automatic control", mode);
+         warnx ("Mode %s - not running automatic control", modename[mode]);
       return;
    }
 
@@ -237,8 +239,10 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    // Adjust offset
    if (stepchange < updated && ((mode == 4 && min > target) || (mode == 3 && max < target)))
    {                            // Step change
+      if (debug > 1)
+         warnx ("Step change by %.1lf", target - ave);
       stepchange = updated + resetlag * 2;
-      offset -= (ave - target);
+      offset += (target - ave);
       delta = 0.01;             // Reset delta
    } else if (ave < target)
       offset += delta;
@@ -277,8 +281,8 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    stemp = target + offset;     // Apply offset
 
    if (debug > 1)
-      warnx ("Temp %.1lf Mode %d F_rate %c Target %.1lf Offset %.1lf Ave %.1lf(%d) Min %.1lf Max %.1lf Delta %.2lf", atemp, mode,
-             f_rate, target, offset, ave, count, min, max, delta);
+      warnx ("Temp %.1lf Mode %s F_rate %c Target %.1lf Offset %.1lf Ave %.1lf(%d) Min %.1lf Max %.1lf Delta %.2lf", atemp,
+             modename[mode], f_rate, target, offset, ave, count, min, max, delta);
 
    // Write back
    *stempp = stemp;
@@ -747,8 +751,11 @@ main (int argc, const char *argv[])
             if (!strcmp (tag, "pow"))
                thispow = atoi (val);
             else if (!strcmp (tag, "mode"))
+            {
                thismode = atoi (val);
-            else if (!strcmp (tag, "mompow"))
+               if (thismode < 0 || thismode >= sizeof (modename) / sizeof (*modename))
+                  thismode = 0;
+            } else if (!strcmp (tag, "mompow"))
                thismompow = atoi (val);
             else if (!strcmp (tag, "f_rate"))
                thisf_rate = *val;
