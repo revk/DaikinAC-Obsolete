@@ -187,6 +187,12 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       offset = 0;
       reset = updated + resetlag;
    }
+   if (mode == 2 || mode == 6)
+   {
+      if (debug > 1 && reset < updated)
+         warnx ("Mode %d - not running automatic control", mode);
+      return;
+   }
 
    int s;
    if (updated < reset)
@@ -240,11 +246,17 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       offset -= delta;
 
    // Check if we need to change mode
-   if (mode == 4 && offset <= -flip)
+   if ((mode == 4 && offset <= -flip) || (mode != 3 && mode != 4 && ave >= target))
+   {
+      if (debug > 1)
+         warnx ("Changing to cool mode");
       mode = 3;                 // Heating and we are still too high so switch to cool
-   else if (mode == 3 && offset >= flip)
+   } else if ((mode == 3 && offset >= flip) || (mode != 3 && mode != 4 && ave <= target))
+   {
+      if (debug > 1)
+         warnx ("Changing to heat mode");
       mode = 4;                 // Cooling and we are still too low so switch to head
-
+   }
    // Limit offset
    if (mode == 4 && offset > maxfoffset)
    {
