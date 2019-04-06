@@ -284,7 +284,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       offset = maxfoffset;
    } else if (mode == 4 && offset < -maxroffset)
       offset = -maxroffset;
-   else if (mode == 4 && offset < -maxfoffset)
+   else if (mode == 3 && offset < -maxfoffset)
    {
       if (f_rate == 'B')
       {
@@ -293,7 +293,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
          f_rate = 'A';          // Give up on night mode
       }
       offset = -maxfoffset;
-   } else if (mode == 4 && offset > maxroffset)
+   } else if (mode == 3 && offset > maxroffset)
       offset = maxroffset;
 
    // Apply new temp
