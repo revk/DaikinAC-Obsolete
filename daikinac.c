@@ -237,7 +237,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       delta /= 0.9;
 
    // Adjust offset
-   if (stepchange < updated && ((mode == 4 && min > target) || (mode == 3 && max < target)))
+   if (stepchange < updated && (min > target || max < target))
    {                            // Step change
       if (debug > 1)
          warnx ("Step change by %.1lf", target - ave);
