@@ -45,16 +45,15 @@ int mqttdebug = 0;
 int curldebug = 0;
 int debug = 0;
 
+
 #ifdef LIBMQTT                  // Auto settings are done based on MQTT cmnd/[name]/atemp periodically
 double maxtemp = 30;            // Aircon temp range allowed
 double mintemp = 18;
 double flip = 3;                // Max offset for flip
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
-#if 0
-double deltamargin = 1;         // Delta adjust threshold
-#endif
-double deltabase = 0.02;        // Delta adjust
+double driftrate = 0.01;        // Per sample slow drift allowed
+int cmpfreqlow = 10;            // Low rate allowed
 int mqttperiod = 60;            // Logging period
 int resetlag = 900;             // Wait for any major change to stabilise
 int maxsamples = 60;            // For average logic
@@ -139,29 +138,46 @@ flushtemp (tempq_t * q, time_t ref, tempq_t * req)
 
 void
 doauto (double *stempp, char *f_ratep, int *modep,      //
-        int pow, int mompow, time_t updated, double atemp, double target)
+        int pow, int cmpfreq, int mompow, time_t updated, double atemp, double target)
 {                               // Temp control. stemp/f_rate/mode are inputs and outputs
    // Get values
    double stemp = *stempp;
    char f_rate = *f_ratep;
    int mode = *modep;
    // state
+   static double lastatemp = 0; // Last atemp
    static double lasttarget = -999;     // Last values to spot changes
    static int lastmode = 0;     //
    static char lastf_rate = 0;  //
    static double offset = 0;    // Offset from target to set
    static time_t reset = 0;     // Change caused reset - this is when to start collecting data again
-   static time_t stepchange = 0;        // Hold off step changes
-   static double delta = 0;     // Adjustment to offset
    static double *t = NULL;     // Samples for averaging data
    static int sample = 0;
    if (!t)
       t = malloc (sizeof (*t) * maxsamples);    // Averaging data
 
-   // Default
-   *stempp = target + offset;   // Default
+   double atempdelta = atemp - lastatemp;       // Rate of change
+   lastatemp = atemp;
 
-   // Changes
+   int kneejerk (void)
+   {                            // react to going to overshoot
+      if (mode == 4 && (atemp >= target || atemp + atempdelta >= target) && cmpfreq > cmpfreqlow)
+      {
+         if (debug > 1)
+            warnx ("Stopping compressor %.1lf %d", atemp, cmpfreq);
+         *stempp = target - maxroffset;
+         return 1;
+      }
+      if (mode == 3 && (atemp <= target || atemp + atempdelta <= target) && cmpfreq > cmpfreqlow)
+      {
+         if (debug > 1)
+            warnx ("Stopping compressor %.1lf %d", atemp, cmpfreq);
+         *stempp = target + maxroffset;
+         return 1;
+      }
+      return 0;                 // OK
+
+   }
    void resetdata (void)
    {                            // Reset average (set to start collecting after a lag) - used when a change happens
       reset = updated + resetlag;
@@ -204,15 +220,17 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
          warnx ("Mode %s - not running automatic control", modename[mode]);
       return;
    }
+   // Default
+   *stempp = target + offset;   // Default
 
    int s;
    if (updated < reset)
    {                            // Waiting for startup or major change - reset data
       for (s = 0; s < maxsamples; s++)
          t[s] = -99;
-      delta = deltabase;        // Reset delta
       if (debug > 1)
          warnx ("Waiting to settle (%ds) %.1lf", (int) (reset - updated), atemp);
+      kneejerk ();
       return;
    }
    t[sample++] = atemp;
@@ -235,34 +253,26 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    {
       if (debug > 1)
          warnx ("Collecting samples (%d/%d) %.1lf", count, minsamples, atemp);
+      kneejerk ();
       return;
    }
    double ave = (min + max) / 2;        // Using this rather than moving average as phase of oscillations is unpredicable
 
-#if 0
-   // Dynamic delta adjust (a tad experimental)
-   if (max - min > deltamargin && delta > deltabase)
-      delta *= 0.9;
-   else if (delta < 0.2 && (ave < target - delta * 2 || ave > target + delta * 2))
-      delta /= 0.9;
-#endif
+   if (kneejerk ())
+      return;                   // We have set a rate to try and stop the compressor
 
    // Adjust offset
-   if (stepchange < updated && (min > target || max < target))
+   if (min > target || max < target)
    {                            // Step change
       double step = target - (min > target ? min : max);
       if (debug > 1)
          warnx ("Step change by %.1lf", step);
-      stepchange = updated + resetlag;
       offset += step;
-      delta = deltabase;        // Reset delta
-      if ((mode == 4 && step < 0) || (mode == 3 && step > 0))
-         stepchange += resetlag;        // assume slower to drop
+      resetdata ();
    } else if (ave < target)
-      offset += delta;
+      offset += driftrate;
    else if (ave > target)
-      offset -= delta;
-
+      offset -= driftrate;
    // Check if we need to change mode
    if ((mode == 4 && offset <= -flip) || (mode != 3 && mode != 4 && ave >= target))
    {
@@ -302,14 +312,11 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       }
    } else if (mode == 3 && offset > maxroffset)
       offset = maxroffset;
-
    // Apply new temp
    stemp = target + offset;     // Apply offset
-
    if (debug > 1)
-      warnx ("Temp %.1lf Mode %s F_rate %c Target %.1lf Offset %.1lf Ave %.1lf(%d) Min %.1lf Max %.1lf Delta %.2lf", atemp,
-             modename[mode], f_rate, target, offset, ave, count, min, max, delta);
-
+      warnx ("Temp %.1lf Mode %s F_rate %c Target %.1lf Offset %.1lf Ave %.1lf(%d) Min %.1lf Max %.1lf", atemp,
+             modename[mode], f_rate, target, offset, ave, count, min, max);
    // Write back
    *stempp = stemp;
    *f_ratep = f_rate;
@@ -329,6 +336,7 @@ main (int argc, const char *argv[])
    const char *db = NULL;
    const char *table = "daikin";
    const char *svgdate = NULL;
+   int maxcmpfreq = 100;
    int svgl = 2;                // Low C
    int svgt = 32;               // High C
    int svgc = 25;               // Per C spacing height
@@ -390,14 +398,11 @@ main (int argc, const char *argv[])
 	 POPT_AUTOHELP { }
 		 // *INDENT-ON*
       };
-
       optCon = poptGetContext (NULL, argc, argv, optionsTable, 0);
       poptSetOtherOptionHelp (optCon, "[IP]");
-
       int c;
       if ((c = poptGetNextOpt (optCon)) < -1)
          errx (1, "%s: %s\n", poptBadOption (optCon, POPT_BADOPTION_NOALIAS), poptStrerror (c));
-
       if (!poptPeekArg (optCon) || modeauto + modeheat + modecool + modedry + modefan + (setmode ? 1 : 0) > 1
           || modeoff + modeon + (setpow ? 1 : 0) > 1)
       {
@@ -420,13 +425,11 @@ main (int argc, const char *argv[])
          setpow = "1";
       if (modeoff)
          setpow = "0";
-
       CURL *curl = curl_easy_init ();
       curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 10L);
       curl_easy_setopt (curl, CURLOPT_TIMEOUT, 60L);
       if (curldebug)
          curl_easy_setopt (curl, CURLOPT_VERBOSE, 1L);
-
       char *get (char *url)
       {                         // Get from URL (frees URL, malloced reply)
          curl_easy_setopt (curl, CURLOPT_HTTPGET, 1L);
@@ -478,7 +481,7 @@ main (int argc, const char *argv[])
             xml_t svg = xml_tree_new ("svg");
             xml_element_set_namespace (svg, xml_namespace (svg, NULL, "http://www.w3.org/2000/svg"));
             xml_addf (svg, "@width", "%d", svgwidth);
-            xml_addf (svg, "@height", "%d", svgheight + 25);
+            xml_addf (svg, "@height", "%d", svgheight + maxcmpfreq);    // Allow for mompow and cmpfreq
             // Graph data
             int stempref = -1,
                lastmode = 0,
@@ -489,6 +492,7 @@ main (int argc, const char *argv[])
                htemplen = 0,
                otemplen = 0,
                mompowlen = 0,
+               cmpfreqlen = 0,
                heatlen = 0,
                heatblen = 0,
                coollen = 0,
@@ -498,6 +502,7 @@ main (int argc, const char *argv[])
                *htempbuf = NULL,
                *otempbuf = NULL,
                *mompowbuf = NULL,
+               *cmpfreqbuf = NULL,
                *heatbuf = NULL,
                *heatbbuf = NULL,
                *coolbuf = NULL,
@@ -507,11 +512,13 @@ main (int argc, const char *argv[])
                htempm = 'M',
                otempm = 'M',
                mompowm = 'M',
+               cmpfreqm = 'M',
                dt1m = 'M';
             FILE *atemp = open_memstream (&atempbuf, &atemplen);
             FILE *htemp = open_memstream (&htempbuf, &htemplen);
             FILE *otemp = open_memstream (&otempbuf, &otemplen);
             FILE *mompow = open_memstream (&mompowbuf, &mompowlen);
+            FILE *cmpfreq = open_memstream (&cmpfreqbuf, &cmpfreqlen);
             FILE *dt1 = open_memstream (&dt1buf, &dt1len);
             FILE *heat = open_memstream (&heatbuf, &heatlen);
             FILE *heatb = open_memstream (&heatbbuf, &heatblen);
@@ -519,8 +526,7 @@ main (int argc, const char *argv[])
             FILE *coolb = open_memstream (&coolbbuf, &coolblen);
             SQL_RES *res = sql_safe_query_store_free (&sql,
                                                       sql_printf ("SELECT * FROM `%#S` WHERE `Updated` LIKE '%#S%%' AND `IP`=%#s",
-                                                                  table,
-                                                                  svgdate, ip));
+                                                                  table, svgdate, ip));
             while (sql_fetch_row (res))
             {
                char *v = sql_col (res, "Updated");
@@ -555,6 +561,13 @@ main (int argc, const char *argv[])
                   d = strtod (v, NULL);
                   fprintf (mompow, "%c%d,%d", mompowm, x, (int) (svgheight + d));
                   mompowm = 'L';
+               }
+               v = sql_col (res, "cmpfreq");
+               if (v)
+               {
+                  d = strtod (v, NULL);
+                  fprintf (cmpfreq, "%c%d,%d", cmpfreqm, x, (int) (svgheight + d));
+                  cmpfreqm = 'L';
                }
                v = sql_col (res, "dt1");
                if (v)
@@ -601,6 +614,7 @@ main (int argc, const char *argv[])
             fclose (htemp);
             fclose (otemp);
             fclose (mompow);
+            fclose (cmpfreq);
             fclose (dt1);
             fclose (heat);
             fclose (heatb);
@@ -614,11 +628,13 @@ main (int argc, const char *argv[])
             xml_addf (svg, "+path@fill=none@stroke=green@stroke-linecap=round@stroke-linejoin=round@d", htempbuf);
             xml_addf (svg, "+path@fill=none@stroke=blue@stroke-linecap=round@stroke-linejoin=round@d", otempbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-linecap=round@stroke-linejoin=round@d", mompowbuf);
+            xml_addf (svg, "+path@fill=none@stroke=red@stroke-linecap=round@stroke-linejoin=round@d", cmpfreqbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-dasharray=1@d", dt1buf);
             free (atempbuf);
             free (htempbuf);
             free (otempbuf);
             free (mompowbuf);
+            free (cmpfreqbuf);
             free (dt1buf);
             free (heatbuf);
             free (heatbbuf);
@@ -662,6 +678,7 @@ main (int argc, const char *argv[])
 #ifdef	LIBMQTT
       int thispow = 0;
       int thismompow = 0;
+      int thiscmpfreq = 0;
       int thismode = 0;
       double thisstemp = 0,
          thisdt1 = 0;
@@ -727,6 +744,7 @@ main (int argc, const char *argv[])
          thisdt1 = 0;
          thispow = 0;
          thismompow = 0;
+         thiscmpfreq = 0;
 #endif
          char *url;
          int tries = retries;
@@ -797,7 +815,9 @@ main (int argc, const char *argv[])
                thismode = atoi (val);
                if (thismode < 0 || thismode >= sizeof (modename) / sizeof (*modename))
                   thismode = 0;
-            } else if (!strcmp (tag, "mompow"))
+            } else if (!strcmp (tag, "cmpfreq"))
+               thiscmpfreq = atoi (val);
+            else if (!strcmp (tag, "mompow"))
                thismompow = atoi (val);
             else if (!strcmp (tag, "f_rate"))
                thisf_rate = *val;
@@ -832,7 +852,8 @@ main (int argc, const char *argv[])
 #ifdef SQLLIB
          if (!db)
             return;
-         sql_string_t s = { };
+         sql_string_t s = {
+         };
          sql_sprintf (&s, "INSERT INTO `%#S` SET `ip`=%#s", table, ip);
          void update (char *tag, char *val)
          {
@@ -882,12 +903,16 @@ main (int argc, const char *argv[])
                if (!v)
                   continue;
                double target = strtod (v, NULL);
+               v = sql_col (res, "cmpfreq");
+               if (!v)
+                  continue;
+               double cmpfreq = strtod (v, NULL);
                int mode = atoi (sql_colz (res, "mode"));
                char f_rate = *sql_colz (res, "f_rate");
                time_t updated = xml_time (sql_colz (res, "updated"));
                int mompow = atoi (sql_colz (res, "mompow"));
                int pow = atoi (sql_colz (res, "pow"));
-               doauto (&stemp, &f_rate, &mode, pow, mompow, updated, atemp, target);
+               doauto (&stemp, &f_rate, &mode, pow, cmpfreq, mompow, updated, atemp, target);
             }
             sql_free_result (res);
          }
@@ -1005,7 +1030,7 @@ main (int argc, const char *argv[])
                      double newstemp = thisstemp;
                      char newf_rate = thisf_rate;
                      int newmode = thismode;
-                     doauto (&newstemp, &newf_rate, &newmode, thispow, thismompow, atempset, atemp, thisdt1);
+                     doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow, atempset, atemp, thisdt1);
                      {          // Rounding temp to 0.5C with error dither
                         static double dither = 0;
                         double rtemp = newstemp;
