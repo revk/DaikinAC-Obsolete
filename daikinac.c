@@ -51,8 +51,8 @@ double mintemp = 18;
 double flip = 3;                // Max offset for flip
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
-double frateaoffset = 1;        // Extra forward for f_rate A
-double frateboffset = 2;        // Extra forward for f_rate B
+double frateaoffset = 0;        // Extra forward for f_rate A
+double frateboffset = 0;        // Extra forward for f_rate B
 #if 0
 double deltamargin = 1;         // Delta adjust threshold
 #endif
@@ -262,6 +262,8 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       stepchange = updated + resetlag;
       offset += (target - ave);
       delta = deltabase;        // Reset delta
+      if ((mode == 4 && ave > target) || (mode == 3 && ave < target))
+         stepchange += resetlag;        // assume slower to drop
    } else if (ave < target)
       offset += delta;
    else if (ave > target)
