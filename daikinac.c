@@ -51,14 +51,12 @@ double mintemp = 18;
 double flip = 3;                // Max offset for flip
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
-double frateaoffset = 0;        // Extra forward for f_rate A
-double frateboffset = 0;        // Extra forward for f_rate B
 #if 0
 double deltamargin = 1;         // Delta adjust threshold
 #endif
 double deltabase = 0.02;        // Delta adjust
 int mqttperiod = 60;            // Logging period
-int resetlag = 600;             // Wait for any major change to stabilise
+int resetlag = 900;             // Wait for any major change to stabilise
 int maxsamples = 60;            // For average logic
 int minsamples = 10;            // For average logic
 const char *mqttid = NULL;      // MQTT settings
@@ -169,13 +167,8 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       reset = updated + resetlag;
    }
    void resetoffset (void)
-   {                            // Reset the offset (allow for mode B being silly)
-      if (mode == 4)
-         offset = (f_rate == 'B' ? frateboffset : frateaoffset);
-      else if (mode == 3)
-         offset = -(f_rate == 'B' ? frateboffset : frateaoffset);
-      else
-         offset = 0;
+   {                            // Reset the offset
+      offset = 0;
       resetdata ();
    }
    if (lasttarget != target)
@@ -257,12 +250,13 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    // Adjust offset
    if (stepchange < updated && (min > target || max < target))
    {                            // Step change
+      double step = target - (min > target ? min : max);
       if (debug > 1)
-         warnx ("Step change by %.1lf", target - ave);
+         warnx ("Step change by %.1lf", step);
       stepchange = updated + resetlag;
-      offset += (target - ave);
+      offset += step;
       delta = deltabase;        // Reset delta
-      if ((mode == 4 && ave > target) || (mode == 3 && ave < target))
+      if ((mode == 4 && step < 0) || (mode == 3 && step > 0))
          stepchange += resetlag;        // assume slower to drop
    } else if (ave < target)
       offset += delta;
