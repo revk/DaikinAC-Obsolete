@@ -480,7 +480,7 @@ main (int argc, const char *argv[])
          {
             xml_t svg = xml_tree_new ("svg");
             xml_element_set_namespace (svg, xml_namespace (svg, NULL, "http://www.w3.org/2000/svg"));
-            xml_addf (svg, "@width", "%d", svgwidth);
+            xml_addf (svg, "@width", "%d", svgwidth + 1);
             xml_addf (svg, "@height", "%d", svgheight + maxcmpfreq);    // Allow for mompow and cmpfreq
             // Graph data
             int stempref = -1,
@@ -644,11 +644,11 @@ main (int argc, const char *argv[])
                // Time of day and headings
                int x,
                  y;
-               for (x = 0; x < svgwidth; x += svgh)
+               for (x = 0; x < svgwidth + 1; x += svgh)
                {
                   xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@stroke-dasharray=1@stroke-width=0.5@d", "M%d 0v%d", x,
                             svgheight + maxcmpfreq);
-                  xml_t t = xml_addf (svg, "+text", "%02d", x / svgh);
+                  xml_t t = xml_addf (svg, "+text", "%02d", (x / svgh) % 24);
                   xml_addf (t, "@x", "%d", x);
                   xml_addf (t, "@y", "%d", svgheight);
                   xml_add (t, "@text-anchor", "middle");
