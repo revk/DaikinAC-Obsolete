@@ -159,7 +159,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    double atempdelta = atemp - lastatemp;       // Rate of change
    lastatemp = atemp;
 
-   int kneejerk (void)
+   int overshootcheck (void)
    {                            // react to going to overshoot
       if (mode == 4 && (atemp >= target || atemp + atempdelta >= target) && cmpfreq > cmpfreqlow)
       {
@@ -230,14 +230,15 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
          t[s] = -99;
       if (debug > 1)
          warnx ("Waiting to settle (%ds) %.1lf", (int) (reset - updated), atemp);
-      kneejerk ();
+      overshootcheck ();
       return;
    }
    t[sample++] = atemp;
    if (sample >= maxsamples)
       sample = 0;
    double min = 0,
-      max = 0;
+      max = 0,
+      ave = 0;
    int count = 0;
    for (s = 0; s < maxsamples; s++)
    {
@@ -247,18 +248,19 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
          min = t[s];
       if (!count || t[s] > max)
          max = t[s];
+      ave += t[s];
       count++;
    }
    if (count < minsamples)
    {
       if (debug > 1)
          warnx ("Collecting samples (%d/%d) %.1lf", count, minsamples, atemp);
-      kneejerk ();
+      overshootcheck ();
       return;
    }
-   double ave = (min + max) / 2;        // Using this rather than moving average as phase of oscillations is unpredicable
+   ave /= count;                // Use mean for drift logic
 
-   if (kneejerk ())
+   if (overshootcheck ())
       return;                   // We have set a rate to try and stop the compressor
 
    // Adjust offset
