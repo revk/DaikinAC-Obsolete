@@ -566,7 +566,7 @@ main (int argc, const char *argv[])
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (cmpfreq, "%c%d,%d", cmpfreqm, x, (int) (svgheight + d));
+                  fprintf (cmpfreq, "%c%d,%d", cmpfreqm, x, (int) (svgheight + maxcmpfreq - d));
                   cmpfreqm = 'L';
                }
                v = sql_col (res, "dt1");
@@ -628,7 +628,7 @@ main (int argc, const char *argv[])
             xml_addf (svg, "+path@fill=none@stroke=green@stroke-linecap=round@stroke-linejoin=round@d", htempbuf);
             xml_addf (svg, "+path@fill=none@stroke=blue@stroke-linecap=round@stroke-linejoin=round@d", otempbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-linecap=round@stroke-linejoin=round@d", mompowbuf);
-            xml_addf (svg, "+path@fill=none@stroke=red@stroke-linecap=round@stroke-linejoin=round@d", cmpfreqbuf);
+            xml_addf (svg, "+path@fill=none@stroke=green@@opacity=0.5@stroke-linecap=round@stroke-linejoin=round@d", cmpfreqbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-dasharray=1@d", dt1buf);
             free (atempbuf);
             free (htempbuf);
@@ -647,7 +647,7 @@ main (int argc, const char *argv[])
                for (x = 0; x < svgwidth; x += svgh)
                {
                   xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@stroke-dasharray=1@stroke-width=0.5@d", "M%d 0v%d", x,
-                            svgheight);
+                            svgheight + maxcmpfreq);
                   xml_t t = xml_addf (svg, "+text", "%02d", x / svgh);
                   xml_addf (t, "@x", "%d", x);
                   xml_addf (t, "@y", "%d", svgheight);
