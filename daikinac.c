@@ -172,15 +172,19 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       if (mode == 4 && (atemp >= target || atemp + atempdelta >= target) && cmpfreq > cmpfreqlow)
       {
          if (debug > 1)
-            warnx ("Stopping compressor heat %.1lf freq %d", atemp, cmpfreq);
+            warnx ("Stopping compressor heat %.1lf freq %d%s", atemp, cmpfreq,
+                   reset > updated ? " (starting to collect samples" : "");
          *stempp = mintemp;
+         reset = 0;             // We hit end stop, so can start collecting data now
          return 1;
       }
       if (mode == 3 && (atemp <= target || atemp + atempdelta <= target) && cmpfreq > cmpfreqlow)
       {
          if (debug > 1)
-            warnx ("Stopping compressor cool %.1lf freq %d", atemp, cmpfreq);
+            warnx ("Stopping compressor cool %.1lf freq %d%s", atemp, cmpfreq,
+                   reset > updated ? " (starting to collect samples" : "");
          *stempp = maxtemp;
+         reset = 0;             // We hit end stop, so can start collecting data now
          return 1;
       }
       return 0;                 // OK
@@ -285,7 +289,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    {                            // Step change
       double step = target - (min > target ? min : max);
       if (debug > 1)
-         warnx ("Step change by %.1lf", step);
+         warnx ("Step change by %+.1lf", step);
       offset += step;
       resetdata ();
    } else if (ave < target)
@@ -334,7 +338,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    // Apply new temp
    stemp = target + offset;     // Apply offset
    if (debug > 1)
-      warnx ("Temp %.1lf Mode %s F_rate %c Target %.1lf Offset %.1lf Ave %.1lf(%d) Min %.1lf Max %.1lf", atemp,
+      warnx ("Temp %.1lf Mode %s F_rate %c Target %.1lf Offset %+.1lf Ave %.2lf(%d) Min %.1lf Max %.1lf", atemp,
              modename[mode], f_rate, target, offset, ave, count, min, max);
    // Write back
    *stempp = stemp;
@@ -830,7 +834,7 @@ main (int argc, const char *argv[])
                         atemp = strtod (temp + 9, NULL);
                         atempset = time (0);
                         if (debug)
-                           warnx ("atemp=%.1lf", atemp);
+                           warnx ("atemp=%.1lf (SNMP)", atemp);
                      } else
                         warnx ("Unexpected value: %s", temp);
                   } else
@@ -1072,7 +1076,7 @@ main (int argc, const char *argv[])
                atemp = strtod (val, NULL);
                next = atempset = time (0);
                if (debug)
-                  warnx ("atemp=%.1lf", atemp);
+                  warnx ("atemp=%.1lf (MQTT)", atemp);
             } else
             {
                l = strlen (mqttcmnd);
@@ -1095,7 +1099,7 @@ main (int argc, const char *argv[])
                      atemp = strtod (val, NULL);
                      next = atempset = time (0);
                      if (debug)
-                        warnx ("atemp=%.1lf", atemp);
+                        warnx ("atemp=%.1lf (MQTT)", atemp);
                   }
                   if (topic[0] == 'd' && topic[1] == 't' && isdigit (topic[2]) && !topic[3])
                   {             // Special case, setting dtN means setting a mode and stemp
@@ -1159,7 +1163,7 @@ main (int argc, const char *argv[])
                         lasterr = newstemp - rtemp;
                         lastset = now;
                         if (debug)
-                           warnx ("Set %.2lf as %.1lf dither error was %.2lf", rtemp, newstemp, dither);
+                           warnx ("Set %.2lf as %.1lf dither error was %+.2lf", rtemp, newstemp, dither);
                      }
                      if (newstemp > maxtemp)
                         newstemp = maxtemp;
