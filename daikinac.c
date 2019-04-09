@@ -975,7 +975,7 @@ main (int argc, const char *argv[])
                char *v = sql_col (res, "atemp");
                if (!v)
                   continue;
-               double atemp = strtod (v, NULL);
+               atemp = strtod (v, NULL);
                v = sql_col (res, "stemp");
                if (!v)
                   continue;
@@ -990,10 +990,10 @@ main (int argc, const char *argv[])
                double cmpfreq = strtod (v, NULL);
                int mode = atoi (sql_colz (res, "mode"));
                char f_rate = *sql_colz (res, "f_rate");
-               time_t updated = xml_time (sql_colz (res, "updated"));
+               atempset = xml_time (sql_colz (res, "updated"));
                int mompow = atoi (sql_colz (res, "mompow"));
                int pow = atoi (sql_colz (res, "pow"));
-               doauto (&stemp, &f_rate, &mode, pow, cmpfreq, mompow, updated, atemp, target);
+               doauto (&stemp, &f_rate, &mode, pow, cmpfreq, mompow, atempset, atemp, target);
             }
             sql_free_result (res);
          }
@@ -1121,6 +1121,7 @@ main (int argc, const char *argv[])
             debug++;
             warnx ("Starting service");
          }
+         time_t nextstat = 0;
          while (1)
          {
             time_t now = time (0);
@@ -1177,33 +1178,37 @@ main (int argc, const char *argv[])
                   if (changed)
                      updatesettings (sensor, control);
                   updatedb ();
-                  xml_t stat = xml_tree_new (NULL);
-                  void check (char *tag, char *val)
+                  if (nextstat <= now)
                   {
-                     // Only some things we report
-                     if (!strncmp (tag, "b_", 2)
-                         || (strncmp (tag, "f_", 2) && !strstr (tag, "pow") && !strstr (tag, "temp") && strcmp (tag, "mode")
-                             && !strstr (tag, "hum") && strcmp (tag, "adv")))
-                        return;
-                     xml_attribute_set (stat, tag, val);
+                     nextstat = now / mqttperiod * mqttperiod + mqttperiod;
+                     xml_t stat = xml_tree_new (NULL);
+                     void check (char *tag, char *val)
+                     {
+                        // Only some things we report
+                        if (!strncmp (tag, "b_", 2)
+                            || (strncmp (tag, "f_", 2) && !strstr (tag, "pow") && !strstr (tag, "temp") && strcmp (tag, "mode")
+                                && !strstr (tag, "hum") && strcmp (tag, "adv")))
+                           return;
+                        xml_attribute_set (stat, tag, val);
+                     }
+                     scan (sensor, check);
+                     scan (control, check);
+                     if (atempset && atempset > now - mqttperiod * 2)
+                        xml_addf (stat, "@atemp", "%.1lf", atemp);
+                     char *statbuf = NULL;
+                     size_t statlen = 0;
+                     FILE *s = open_memstream (&statbuf, &statlen);
+                     xml_write_json (s, stat);
+                     fclose (s);
+                     char *topic = NULL;
+                     asprintf (&topic, "%s/%s/STATE", mqtttele, mqtttopic);
+                     e = mosquitto_publish (mqtt, NULL, topic, strlen (statbuf), statbuf, 0, 1);
+                     if (mqttdebug)
+                        warnx ("Publish %s %s", topic, statbuf);
+                     free (topic);
+                     free (statbuf);
+                     xml_tree_delete (stat);
                   }
-                  scan (sensor, check);
-                  scan (control, check);
-                  if (atempset && atempset > now - mqttperiod * 2)
-                     xml_addf (stat, "@atemp", "%.1lf", atemp);
-                  char *statbuf = NULL;
-                  size_t statlen = 0;
-                  FILE *s = open_memstream (&statbuf, &statlen);
-                  xml_write_json (s, stat);
-                  fclose (s);
-                  char *topic = NULL;
-                  asprintf (&topic, "%s/%s/STATE", mqtttele, mqtttopic);
-                  e = mosquitto_publish (mqtt, NULL, topic, strlen (statbuf), statbuf, 0, 1);
-                  if (mqttdebug)
-                     warnx ("Publish %s %s", topic, statbuf);
-                  free (topic);
-                  free (statbuf);
-                  xml_tree_delete (stat);
                   if (atempset
 #ifdef LIBSNMP
                       && !atemphost
