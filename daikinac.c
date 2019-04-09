@@ -1057,7 +1057,7 @@ main (int argc, const char *argv[])
             if (mqttatemp && !strcmp (topic, mqttatemp))
             {                   // Direct atemp topic set
                atemp = strtod (val, NULL);
-               next = atempset = time (0);
+               atempset = time (0);
                if (debug)
                   warnx ("atemp=%.1lf", atemp);
             } else
@@ -1080,7 +1080,7 @@ main (int argc, const char *argv[])
                   if (!mqttatemp && !strcmp (topic, "atemp"))
                   {
                      atemp = strtod (val, NULL);
-                     next = atempset = time (0);
+                     atempset = time (0);
                      if (debug)
                         warnx ("atemp=%.1lf", atemp);
                   }
@@ -1121,7 +1121,6 @@ main (int argc, const char *argv[])
             debug++;
             warnx ("Starting service");
          }
-         time_t nextstat = 0;
          while (1)
          {
             time_t now = time (0);
@@ -1178,47 +1177,35 @@ main (int argc, const char *argv[])
                   if (changed)
                      updatesettings (sensor, control);
                   updatedb ();
-                  if (nextstat <= now)
+                  xml_t stat = xml_tree_new (NULL);
+                  void check (char *tag, char *val)
                   {
-                     nextstat = now / mqttperiod * mqttperiod + mqttperiod;
-                     xml_t stat = xml_tree_new (NULL);
-                     void check (char *tag, char *val)
-                     {
-                        // Only some things we report
-                        if (!strncmp (tag, "b_", 2)
-                            || (strncmp (tag, "f_", 2) && !strstr (tag, "pow") && !strstr (tag, "temp") && strcmp (tag, "mode")
-                                && !strstr (tag, "hum") && strcmp (tag, "adv")))
-                           return;
-                        xml_attribute_set (stat, tag, val);
-                     }
-                     scan (sensor, check);
-                     scan (control, check);
-                     if (atempset && atempset > now - mqttperiod * 2)
-                        xml_addf (stat, "@atemp", "%.1lf", atemp);
-                     char *statbuf = NULL;
-                     size_t statlen = 0;
-                     FILE *s = open_memstream (&statbuf, &statlen);
-                     xml_write_json (s, stat);
-                     fclose (s);
-                     char *topic = NULL;
-                     asprintf (&topic, "%s/%s/STATE", mqtttele, mqtttopic);
-                     e = mosquitto_publish (mqtt, NULL, topic, strlen (statbuf), statbuf, 0, 1);
-                     if (mqttdebug)
-                        warnx ("Publish %s %s", topic, statbuf);
-                     free (topic);
-                     free (statbuf);
-                     xml_tree_delete (stat);
+                     // Only some things we report
+                     if (!strncmp (tag, "b_", 2)
+                         || (strncmp (tag, "f_", 2) && !strstr (tag, "pow") && !strstr (tag, "temp") && strcmp (tag, "mode")
+                             && !strstr (tag, "hum") && strcmp (tag, "adv")))
+                        return;
+                     xml_attribute_set (stat, tag, val);
                   }
-                  if (atempset
-#ifdef LIBSNMP
-                      && !atemphost
-#endif
-                     )
-                     next += 10;        // Expect temp to be set again around next period using MQTT
+                  scan (sensor, check);
+                  scan (control, check);
+                  if (atempset && atempset > now - mqttperiod * 2)
+                     xml_addf (stat, "@atemp", "%.1lf", atemp);
+                  char *statbuf = NULL;
+                  size_t statlen = 0;
+                  FILE *s = open_memstream (&statbuf, &statlen);
+                  xml_write_json (s, stat);
+                  fclose (s);
+                  char *topic = NULL;
+                  asprintf (&topic, "%s/%s/STATE", mqtttele, mqtttopic);
+                  e = mosquitto_publish (mqtt, NULL, topic, strlen (statbuf), statbuf, 0, 1);
+                  if (mqttdebug)
+                     warnx ("Publish %s %s", topic, statbuf);
+                  free (topic);
+                  free (statbuf);
+                  xml_tree_delete (stat);
                } else
                   next = now;   // Try again!
-               if (next > nextstat)
-                  next = nextstat;
                freestatus ();
                to = next - now;
             }
