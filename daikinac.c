@@ -70,6 +70,7 @@ const char *mqttpass = NULL;
 const char *mqtttopic = "diakin";
 const char *mqttcmnd = "cmnd";
 const char *mqtttele = "tele";
+char *mqttatemp = NULL;
 
         // This function does automatic temperature adjust
         // If SQL available it is called at start with recent data, in order to catch up any state it needs
@@ -397,6 +398,7 @@ main (int argc, const char *argv[])
          { "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
          { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
          { "mqtt-debug", 0, POPT_ARG_NONE, &mqttdebug, 0, "Debug"},
+	 { "mqtt-atemp", 0, POPT_ARG_STRING , &mqttatemp, 0, "MQTT topic to subscribe for setting atemp (default cmnd/[topic]/atemp)", "topic"},
          { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max reverse offset to flip modes", "C"},
          { "max-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &maxsamples, 0, "Max samples used for averaging", "N"},
          { "min-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &minsamples, 0, "Min samples used for averaging", "N"},
@@ -1013,6 +1015,16 @@ main (int argc, const char *argv[])
             int e = mosquitto_subscribe (mqtt, NULL, sub, 0);
             if (e)
                errx (1, "MQTT subscribe failed %s", mosquitto_strerror (e));
+            if (debug)
+               warnx ("MQTT subscribed to: [%s]", sub);
+            if (mqttatemp)
+            {
+               int e = mosquitto_subscribe (mqtt, NULL, mqttatemp, 0);
+               if (e)
+                  errx (1, "MQTT subscribe failed %s", mosquitto_strerror (e));
+               if (debug)
+                  warnx ("MQTT subscribed to: [%s]", mqttatemp);
+            }
             free (sub);
          }
          void disconnect (struct mosquitto *mqtt, void *obj, int rc)
@@ -1033,15 +1045,7 @@ main (int argc, const char *argv[])
             if (mqttdebug)
                warnx ("MQTT message %s %.*s", topic, msg->payloadlen, (char *) msg->payload);
             syslog (LOG_INFO, "%s MQTT message %s %.*s", mqtttopic, topic, msg->payloadlen, (char *) msg->payload);
-            int l = strlen (mqttcmnd);
-            if (strncmp (topic, mqttcmnd, l) || topic[l] != '/')
-               return;
-            topic += l + 1;
-            l = strlen (mqtttopic);
-            if (strncmp (topic, mqtttopic, l) || topic[l] != '/')
-               return;
-            topic += l + 1;
-            l = msg->payloadlen;
+            int l = msg->payloadlen;
             char *p = msg->payload;
             if (l > 2 && *p == '"' && p[l - 1] == '"')
             {
@@ -1050,38 +1054,57 @@ main (int argc, const char *argv[])
             }
             char *val = malloc (l + 1);
             memcpy (val, p, l);
-            if (getstatus ())
+            if (mqttatemp && !strcmp (topic, mqttatemp))
+            {                   // Direct atemp topic set
+               atemp = strtod (val, NULL);
+               next = atempset = time (0);
+               if (debug)
+                  warnx ("atemp=%.1lf", atemp);
+            } else
             {
-               updatestatus ();
-               val[l] = 0;
-#define	c(x,t,v) if(!strcmp(#x,topic)){if(val&&(!x||strcmp(x,val))){if(x)free(x);x=strdup(val);changed=1;}}
-               controlfields;
-#undef c
-               if (!strcmp (topic, "atemp"))
+               l = strlen (mqttcmnd);
+               if (strncmp (topic, mqttcmnd, l) || topic[l] != '/')
+                  return;
+               topic += l + 1;
+               l = strlen (mqtttopic);
+               if (strncmp (topic, mqtttopic, l) || topic[l] != '/')
+                  return;
+               topic += l + 1;
+               if (getstatus ())
                {
-                  atemp = strtod (val, NULL);
-                  next = atempset = time (0);
-               }
-               if (topic[0] == 'd' && topic[1] == 't' && isdigit (topic[2]) && !topic[3])
-               {                // Special case, setting dtN means setting a mode and stemp
-                  char *url = NULL;
-                  size_t len = 0;
-                  FILE *o = open_memstream (&url, &len);
-                  fprintf (o, "http://%s/aircon/set_control_info?", ip);
-#define c(x,t,v) if(!strcmp(#x,"stemp"))fprintf(o,"%s=%s&",#x,val); else if(!strcmp(#x,"mode"))fprintf(o,"%s=%s&",#x,topic+2); else fprintf(o,"%s=%s&",#x,x);
-                  controlfields
+                  updatestatus ();
+                  val[l] = 0;
+#define	c(x,t,v) if(!strcmp(#x,topic)){if(val&&(!x||strcmp(x,val))){if(x)free(x);x=strdup(val);changed=1;}}
+                  controlfields;
 #undef c
-                     fclose (o);
-                  url[--len] = 0;
-                  char *ok = get (url);
-                  free (ok);
-                  if (mode && atoi (mode) && atoi (mode) != atoi (topic + 2))
-                     changed = 1;       // Force setting back to right mode
+                  if (!mqttatemp && !strcmp (topic, "atemp"))
+                  {
+                     atemp = strtod (val, NULL);
+                     next = atempset = time (0);
+                     if (debug)
+                        warnx ("atemp=%.1lf", atemp);
+                  }
+                  if (topic[0] == 'd' && topic[1] == 't' && isdigit (topic[2]) && !topic[3])
+                  {             // Special case, setting dtN means setting a mode and stemp
+                     char *url = NULL;
+                     size_t len = 0;
+                     FILE *o = open_memstream (&url, &len);
+                     fprintf (o, "http://%s/aircon/set_control_info?", ip);
+#define c(x,t,v) if(!strcmp(#x,"stemp"))fprintf(o,"%s=%s&",#x,val); else if(!strcmp(#x,"mode"))fprintf(o,"%s=%s&",#x,topic+2); else fprintf(o,"%s=%s&",#x,x);
+                     controlfields
+#undef c
+                        fclose (o);
+                     url[--len] = 0;
+                     char *ok = get (url);
+                     free (ok);
+                     if (mode && atoi (mode) && atoi (mode) != atoi (topic + 2))
+                        changed = 1;    // Force setting back to right mode
+                  }
+                  if (changed)
+                     updatesettings (sensor, control);
                }
-               if (changed)
-                  updatesettings (sensor, control);
+               freestatus ();
             }
-            freestatus ();
             free (val);
          }
          mosquitto_connect_callback_set (mqtt, connect);
