@@ -1101,10 +1101,7 @@ main (int argc, const char *argv[])
                         changed = 1;    // Force setting back to right mode
                   }
                   if (changed)
-                  {
                      updatesettings (sensor, control);
-                     next = time (0);
-                  }
                }
                freestatus ();
             }
