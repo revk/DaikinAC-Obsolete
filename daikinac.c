@@ -1156,8 +1156,7 @@ main (int argc, const char *argv[])
                         dither += lasterr * (now - lastset) / mqttperiod;
                         lasterr = newstemp - rtemp;
                         lastset = now;
-                        if (debug)
-                           warnx ("Set %.2lf as %.1lf dither error now %.2lf", rtemp, newstemp, dither);
+                        //if (debug) warnx ("Set %.2lf as %.1lf dither error now %.2lf", rtemp, newstemp, dither);
                      }
                      if (newstemp > maxtemp)
                         newstemp = maxtemp;
