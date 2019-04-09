@@ -513,10 +513,10 @@ main (int argc, const char *argv[])
             xml_addf (svg, "@width", "%d", svgwidth + 1);
             xml_addf (svg, "@height", "%d", svgheight + maxcmpfreq + 1);        // Allow for mompow and cmpfreq
             // Graph data
-            int stempref = -1,
-               lastmode = 0,
-               lasty = 0,
-               x = 0;
+            int lastmode = 0,
+               lasty = 0;
+            double x = 0,
+               stempref = -1;
             char lastf_rate = 0;
             size_t atemplen = 0,
                htemplen = 0,
@@ -562,48 +562,48 @@ main (int argc, const char *argv[])
                char *v = sql_col (res, "Updated");
                if (strlen (v) < 19)
                   continue;
-               x = (atoi (v + 11) * 3600 + atoi (v + 14) * 60 + atoi (v + 17)) * svgh / 3600;
+               x = (double) (atoi (v + 11) * 3600 + atoi (v + 14) * 60 + atoi (v + 17)) * svgh / 3600;
                double d;
                v = sql_col (res, "atemp");
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (atemp, "%c%d,%d", atempm, x, (int) (svgheight - (d - svgl) * svgc));
+                  fprintf (atemp, "%c%.2lf,%d", atempm, x, (int) (svgheight - (d - svgl) * svgc));
                   atempm = 'L';
                }
                v = sql_col (res, "htemp");
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (htemp, "%c%d,%d", htempm, x, (int) (svgheight - (d - svgl) * svgc));
+                  fprintf (htemp, "%c%.2lf,%d", htempm, x, (int) (svgheight - (d - svgl) * svgc));
                   htempm = 'L';
                }
                v = sql_col (res, "otemp");
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (otemp, "%c%d,%d", otempm, x, (int) (svgheight - (d - svgl) * svgc));
+                  fprintf (otemp, "%c%.2lf,%d", otempm, x, (int) (svgheight - (d - svgl) * svgc));
                   otempm = 'L';
                }
                v = sql_col (res, "mompow");
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (mompow, "%c%d,%d", mompowm, x, (int) (svgheight + d));
+                  fprintf (mompow, "%c%.2lf,%d", mompowm, x, (int) (svgheight + d));
                   mompowm = 'L';
                }
                v = sql_col (res, "cmpfreq");
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (cmpfreq, "%c%d,%d", cmpfreqm, x, (int) (svgheight + maxcmpfreq - d));
+                  fprintf (cmpfreq, "%c%.2lf,%d", cmpfreqm, x, (int) (svgheight + maxcmpfreq - d));
                   cmpfreqm = 'L';
                }
                v = sql_col (res, "dt1");
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (dt1, "%c%d,%d", dt1m, x, (int) (svgheight - (d - svgl) * svgc));
+                  fprintf (dt1, "%c%.2lf,%d", dt1m, x, (int) (svgheight - (d - svgl) * svgc));
                   dt1m = 'L';
                }
                v = sql_col (res, "stemp");
@@ -615,9 +615,10 @@ main (int argc, const char *argv[])
                if ((lastf_rate != f_rate || mode != lastmode) && stempref >= 0)
                {                // Close box
                   if (lastmode == 3)
-                     fprintf (lastf_rate == 'B' ? coolb : cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
+                     fprintf (lastf_rate == 'B' ? coolb : cool, "L%.2lf,%dL%.2lf,%dL%.2lf,%dZ", x, lasty, x, 0, stempref, 0);
                   if (lastmode == 4)
-                     fprintf (lastf_rate == 'B' ? heatb : heat, "L%d %dL%d %dL%d %dZ", x, lasty, x, svgheight, stempref, svgheight);
+                     fprintf (lastf_rate == 'B' ? heatb : heat, "L%.2lf,%dL%.2lf,%dL%.2lf,%dZ", x, lasty, x, svgheight, stempref,
+                              svgheight);
                   stempref = -1;
                }
                if (mode == 3 || mode == 4)
@@ -625,10 +626,10 @@ main (int argc, const char *argv[])
                   FILE *f = (mode == 3 ? f_rate == 'B' ? coolb : cool : f_rate == 'B' ? heatb : heat);
                   d = strtod (v, NULL);
                   if (stempref >= 0)
-                     fprintf (f, "L%d %dL", x, lasty);
+                     fprintf (f, "L%.2lf,%dL", x, lasty);
                   else
                      fprintf (f, "M");
-                  fprintf (f, "%d %d", x, lasty = (int) (svgheight - (d - svgl) * svgc));
+                  fprintf (f, "%.2lf,%d", x, lasty = (int) (svgheight - (d - svgl) * svgc));
                   if (stempref < 0)
                      stempref = x;
                }
@@ -637,9 +638,10 @@ main (int argc, const char *argv[])
             }
             x += svgh / 60;     // Assume minute stats to draw last bar
             if (lastmode == 3)
-               fprintf (lastf_rate == 'B' ? coolb : cool, "L%d %dL%d %dL%d %dZ", x, lasty, x, 0, stempref, 0);
+               fprintf (lastf_rate == 'B' ? coolb : cool, "L%.2lf,%dL%.2lf,%dL%.2lf,%dZ", x, lasty, x, 0, stempref, 0);
             if (lastmode == 4)
-               fprintf (lastf_rate == 'B' ? heatb : heat, "L%d %dL%d %dL%d %dZ", x, lasty, x, svgheight, stempref, svgheight);
+               fprintf (lastf_rate == 'B' ? heatb : heat, "L%.2lf,%dL%.2lf,%dL%.2lf,%dZ", x, lasty, x, svgheight, stempref,
+                        svgheight);
             fclose (atemp);
             fclose (htemp);
             fclose (otemp);
