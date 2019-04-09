@@ -157,6 +157,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    static char lastf_rate = 0;  //
    static double offset = 0;    // Offset from target to set
    static time_t reset = 0;     // Change caused reset - this is when to start collecting data again
+   static time_t nextsample = 0;        // Make data collection reasonably regular
    static double *t = NULL;     // Samples for averaging data
    static int sample = 0;
    if (!t)
@@ -228,6 +229,15 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    }
    // Default
    *stempp = target + offset;   // Default
+
+   if (updated < nextsample)
+   {                            // Waiting for next sample at sensible time
+      overshootcheck ();
+      return;
+   }
+   if (nextsample < updated - mqttperiod)
+      nextsample = updated;
+   nextsample += mqttperiod;
 
    int s;
    if (updated < reset)
