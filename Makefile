@@ -4,6 +4,12 @@ else
 LIBMQTT=
 endif
 
+ifneq ("$(wildcard /usr/include/net-snmp/session_api.h)","")
+LIBSNMP=-DLIBSNMP -lsnmp
+else
+LIBSNMP=
+endif
+
 SQLINC=$(shell mysql_config --include)
 SQLLIB=$(shell mysql_config --libs)
 SQLVER=$(shell mysql_config --version | sed 'sx\..*xx')
@@ -18,7 +24,7 @@ AXL/axl.o: AXL/axl.c
 	make -C AXL
 
 daikinac: daikinac.c SQLlib/sqllib.o AXL/axl.o
-	cc -O -o $@ $< ${OPTS} -lpopt ${LIBMQTT} -ISQLlib SQLlib/sqllib.o -lcurl -DSQLLIB -IAXL AXL/axl.o
+	cc -O -o $@ $< ${OPTS} -lpopt ${LIBMQTT} ${LIBSNMP} -ISQLlib SQLlib/sqllib.o -lcurl -DSQLLIB -IAXL AXL/axl.o
 
 git:
 	git submodule update --init

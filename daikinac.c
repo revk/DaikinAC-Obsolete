@@ -30,6 +30,11 @@
 #if	defined(SQLLIB) || defined(LIBMQTT)
 #include <axl.h>
 #endif
+#ifdef LIBSNMP
+#include <net-snmp/net-snmp-config.h>
+#include <net-snmp/net-snmp-includes.h>
+#include <net-snmp/session_api.h>
+#endif
 
 #define	controlfields			\
 	c(pow, Power, 0/1)		\
@@ -189,21 +194,21 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    }
    if (lasttarget != target)
    {                            // Assume offset still OK
-      if (debug > 1 && reset < updated)
-         warnx ("Target change - resetting");
+      if (debug > 1 && reset < updated && lasttarget)
+         warnx ("Target change to %.1lf - resetting", target);
       lasttarget = target;
       resetdata ();
    }
    if (lastf_rate != f_rate)
    {                            // Assume offset needs resetting
-      if (debug > 1 && reset < updated)
+      if (debug > 1 && reset < updated && lastf_rate)
          warnx ("Fan change to %c - resetting", f_rate);
       lastf_rate = f_rate;
       resetoffset ();
    }
    if (lastmode != mode)
    {                            // Assume offset needs resetting
-      if (debug > 1 && reset < updated)
+      if (debug > 1 && reset < updated && lastmode)
          warnx ("Mode change to %s - resetting", modename[mode]);
       lastmode = mode;
       resetoffset ();
@@ -345,6 +350,11 @@ main (int argc, const char *argv[])
    int svgh = 60;               // Per hour spacing width
    int svgwidth = 24 * svgh;
    int svgheight = (svgt - svgl) * svgc;
+#ifdef LIBSNMP
+   const char *atempoid = "iso.3.6.1.4.1.42814.14.3.5.1.0";     // The nono temp sensors default
+   const char *atempcommunity = "public";
+   const char *atemphost = NULL;
+#endif
 #endif
    int info = 0,
       modeoff = 0,
@@ -393,6 +403,11 @@ main (int argc, const char *argv[])
          { "max-forward", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxfoffset, 0, "Max forward offset to apply", "C"},
          { "max-reverse", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxroffset, 0, "Max reverse offset to apply", "C"},
          { "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
+#endif
+#ifdef LIBSNMP
+	 { "atemp-oid", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &atempoid, 0, "SNMP temperature OID","OID"},
+	 { "atemp-community", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &atempcommunity, 0, "SNMP temperature community","community"},
+	 { "atemp-host", 0, POPT_ARG_STRING , &atemphost, 0, "SNMP temperature Hostname","Host/IP"},
 #endif
          { "curl-debug", 0, POPT_ARG_NONE, &curldebug, 0, "Debug"},
          { "curl-retries", 0, POPT_ARG_INT| POPT_ARGFLAG_SHOW_DEFAULT, &retries, 0, "HTTP retries to A/C"},
@@ -674,6 +689,32 @@ main (int argc, const char *argv[])
       }
 #endif
 
+#ifdef	LIBSNMP
+      struct snmp_session session;
+      struct snmp_session *sess_handle;
+      struct snmp_pdu *pdu;
+      struct snmp_pdu *response;
+
+
+      oid id_oid[MAX_OID_LEN];
+
+      size_t id_len = MAX_OID_LEN;
+
+      if (atemphost)
+      {
+
+         init_snmp ("Temp Check");
+
+         snmp_sess_init (&session);
+         session.version = SNMP_VERSION_2c;
+         session.community = (unsigned char *) atempcommunity;
+         session.community_len = strlen ((char *) session.community);
+         session.peername = (char *) atemphost;
+         sess_handle = snmp_open (&session);
+
+      }
+#endif
+
       int changed = 0;
       char *sensor = NULL;
       char *control = NULL;
@@ -747,6 +788,39 @@ main (int argc, const char *argv[])
          thispow = 0;
          thismompow = 0;
          thiscmpfreq = 0;
+#endif
+#ifdef	LIBSNMP
+         pdu = snmp_pdu_create (SNMP_MSG_GET);
+         read_objid (atempoid, id_oid, &id_len);
+         snmp_add_null_var (pdu, id_oid, id_len);
+
+         int status = snmp_synch_response (sess_handle, pdu, &response);
+         if (status)
+         {
+            warnx ("SNMP error (%s): %s", atemphost, snmp_api_errstring (status));
+            snmp_free_pdu (pdu);
+         } else
+         {                      // Got reply
+            struct variable_list *vars;
+            for (vars = response->variables; vars; vars = vars->next_variable)
+            {
+               char temp[30];
+               int l = snprint_value (temp, sizeof (temp), vars->name, vars->name_length, vars);
+               if (l > 0)
+               {
+                  if (!strncmp (temp, "STRING: \"", 9))
+                  {             // Really, this is crap!
+                     atemp = strtod (temp + 9, NULL);
+                     atempset = time (0);
+                     if (debug)
+                        warnx ("atemp=%.1lf", atemp);
+                  } else
+                     warnx ("Unexpected value: %s", temp);
+               } else
+                  warnx ("Bad value from SNMP");
+            }
+            snmp_free_pdu (response);
+         }
 #endif
          char *url;
          int tries = retries;
@@ -919,7 +993,7 @@ main (int argc, const char *argv[])
             sql_free_result (res);
          }
 #endif
-         time_t next = time (0) + mqttperiod;
+         time_t next = time (0) / mqttperiod * mqttperiod + mqttperiod;
          int e = mosquitto_lib_init ();
          if (e)
             errx (1, "MQTT init failed %s", mosquitto_strerror (e));
@@ -1100,8 +1174,12 @@ main (int argc, const char *argv[])
                   free (topic);
                   free (statbuf);
                   xml_tree_delete (stat);
-                  if (atempset)
-                     next += 10;        // Expect temp to be set again around next period
+                  if (atempset
+#ifdef LIBSNMP
+                      && !atemphost
+#endif
+                     )
+                     next += 10;        // Expect temp to be set again around next period using MQTT
                } else
                   next = now;   // Try again!
                freestatus ();
@@ -1111,7 +1189,7 @@ main (int argc, const char *argv[])
                to = 1;
             e = mosquitto_loop (mqtt, to * 1000, 1);
             if (e)
-               errx (1, "MQTT loop failed %s", mosquitto_strerror (e));
+               errx (1, "MQTT loop failed %s (to %d)", mosquitto_strerror (e), to * 1000);
          }
          mosquitto_destroy (mqtt);
          mosquitto_lib_cleanup ();
@@ -1140,6 +1218,10 @@ main (int argc, const char *argv[])
             sql_free_result (fields);
          sql_close (&sql);
       }
+#endif
+#ifdef	LIBSNMP
+      snmp_free_pdu (response);
+      snmp_close (sess_handle);
 #endif
    }
 
