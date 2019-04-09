@@ -498,7 +498,7 @@ main (int argc, const char *argv[])
             xml_t svg = xml_tree_new ("svg");
             xml_element_set_namespace (svg, xml_namespace (svg, NULL, "http://www.w3.org/2000/svg"));
             xml_addf (svg, "@width", "%d", svgwidth + 1);
-            xml_addf (svg, "@height", "%d", svgheight + maxcmpfreq);    // Allow for mompow and cmpfreq
+            xml_addf (svg, "@height", "%d", svgheight + maxcmpfreq + 1);        // Allow for mompow and cmpfreq
             // Graph data
             int stempref = -1,
                lastmode = 0,
@@ -1075,7 +1075,7 @@ main (int argc, const char *argv[])
                   url[--len] = 0;
                   char *ok = get (url);
                   free (ok);
-                  if (mode && atoi(mode)&&atoi(mode) != atoi (topic + 2))
+                  if (mode && atoi (mode) && atoi (mode) != atoi (topic + 2))
                      changed = 1;       // Force setting back to right mode
                }
                if (changed)
