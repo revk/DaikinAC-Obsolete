@@ -338,7 +338,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    // Apply new temp
    stemp = target + offset;     // Apply offset
    if (debug > 1)
-      warnx ("Temp %.1lf Mode %s F_rate %c Target %.1lf Offset %+.1lf Ave %.2lf(%d) Min %.1lf Max %.1lf", atemp,
+      warnx ("Temp %.1lf Mode %s F_rate %c Target %.1lf Offset %+.2lf Ave %.2lf(%d) Min %.1lf Max %.1lf", atemp,
              modename[mode], f_rate, target, offset, ave, count, min, max);
    // Write back
    *stempp = stemp;
