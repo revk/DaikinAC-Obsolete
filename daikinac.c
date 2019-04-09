@@ -1075,7 +1075,8 @@ main (int argc, const char *argv[])
                   url[--len] = 0;
                   char *ok = get (url);
                   free (ok);
-                  changed = 1;  // Force setting back to right mode
+                  if (mode && atoi(mode)&&atoi(mode) != atoi (topic + 2))
+                     changed = 1;       // Force setting back to right mode
                }
                if (changed)
                   updatesettings (sensor, control);
@@ -1223,8 +1224,11 @@ main (int argc, const char *argv[])
       }
 #endif
 #ifdef	LIBSNMP
-      snmp_free_pdu (response);
-      snmp_close (sess_handle);
+      if (atemphost)
+      {
+         snmp_free_pdu (response);
+         snmp_close (sess_handle);
+      }
 #endif
    }
 
