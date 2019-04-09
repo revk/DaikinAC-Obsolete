@@ -1146,9 +1146,15 @@ main (int argc, const char *argv[])
                      doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow, atempset, atemp, thisdt1);
                      {          // Rounding temp to 0.5C with error dither
                         static double dither = 0;
+                        static double lasterr = 0;
+                        static time_t lastset = 0;
                         double rtemp = newstemp;
+                        if (!lastset)
+                           lastset = now;
                         newstemp = round ((newstemp - dither) * 2) / 2; // It gets upset if not .0 or .5
-                        dither += newstemp - rtemp;
+                        dither += lasterr * (now - lastset) / mqttperiod;
+                        lasterr = newstemp - rtemp;
+                        lastset = now;
                      }
                      if (newstemp > maxtemp)
                         newstemp = maxtemp;
