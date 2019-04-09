@@ -1217,6 +1217,8 @@ main (int argc, const char *argv[])
                      next += 10;        // Expect temp to be set again around next period using MQTT
                } else
                   next = now;   // Try again!
+               if (next > nextstat)
+                  next = nextstat;
                freestatus ();
                to = next - now;
             }
