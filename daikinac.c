@@ -1163,7 +1163,7 @@ main (int argc, const char *argv[])
                   scan (sensor, check);
                   scan (control, check);
                   if (atempset && atempset > now - mqttperiod * 2)
-                     xml_addf (stat, "@atemp", "%.lf", atemp);
+                     xml_addf (stat, "@atemp", "%.1lf", atemp);
                   char *statbuf = NULL;
                   size_t statlen = 0;
                   FILE *s = open_memstream (&statbuf, &statlen);
