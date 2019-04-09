@@ -1154,11 +1154,12 @@ main (int argc, const char *argv[])
                         double rtemp = newstemp;
                         if (!lastset)
                            lastset = now;
-                        newstemp = round ((newstemp - dither) * 2) / 2; // It gets upset if not .0 or .5
                         dither += lasterr * (now - lastset) / mqttperiod;
+                        newstemp = round ((newstemp - dither) * 2) / 2; // It gets upset if not .0 or .5
                         lasterr = newstemp - rtemp;
                         lastset = now;
-                        //if (debug) warnx ("Set %.2lf as %.1lf dither error now %.2lf", rtemp, newstemp, dither);
+                        if (debug)
+                           warnx ("Set %.2lf as %.1lf dither error was %.2lf", rtemp, newstemp, dither);
                      }
                      if (newstemp > maxtemp)
                         newstemp = maxtemp;
