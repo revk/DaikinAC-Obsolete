@@ -477,7 +477,7 @@ main (int argc, const char *argv[])
          {
             syslog (LOG_INFO, "Failed %s", url);
             if (debug)
-               warnx ("Fail %s\n", url);
+               warnx ("Fail %s", url);
             if (reply)
                free (reply);
             free (url);
