@@ -790,36 +790,39 @@ main (int argc, const char *argv[])
          thiscmpfreq = 0;
 #endif
 #ifdef	LIBSNMP
-         pdu = snmp_pdu_create (SNMP_MSG_GET);
-         read_objid (atempoid, id_oid, &id_len);
-         snmp_add_null_var (pdu, id_oid, id_len);
-
-         int status = snmp_synch_response (sess_handle, pdu, &response);
-         if (status)
+         if (atemphost)
          {
-            warnx ("SNMP error (%s): %s", atemphost, snmp_api_errstring (status));
-            snmp_free_pdu (pdu);
-         } else
-         {                      // Got reply
-            struct variable_list *vars;
-            for (vars = response->variables; vars; vars = vars->next_variable)
+            pdu = snmp_pdu_create (SNMP_MSG_GET);
+            read_objid (atempoid, id_oid, &id_len);
+            snmp_add_null_var (pdu, id_oid, id_len);
+
+            int status = snmp_synch_response (sess_handle, pdu, &response);
+            if (status)
             {
-               char temp[30];
-               int l = snprint_value (temp, sizeof (temp), vars->name, vars->name_length, vars);
-               if (l > 0)
+               warnx ("SNMP error (%s): %s", atemphost, snmp_api_errstring (status));
+               snmp_free_pdu (pdu);
+            } else
+            {                   // Got reply
+               struct variable_list *vars;
+               for (vars = response->variables; vars; vars = vars->next_variable)
                {
-                  if (!strncmp (temp, "STRING: \"", 9))
-                  {             // Really, this is crap!
-                     atemp = strtod (temp + 9, NULL);
-                     atempset = time (0);
-                     if (debug)
-                        warnx ("atemp=%.1lf", atemp);
+                  char temp[30];
+                  int l = snprint_value (temp, sizeof (temp), vars->name, vars->name_length, vars);
+                  if (l > 0)
+                  {
+                     if (!strncmp (temp, "STRING: \"", 9))
+                     {          // Really, this is crap!
+                        atemp = strtod (temp + 9, NULL);
+                        atempset = time (0);
+                        if (debug)
+                           warnx ("atemp=%.1lf", atemp);
+                     } else
+                        warnx ("Unexpected value: %s", temp);
                   } else
-                     warnx ("Unexpected value: %s", temp);
-               } else
-                  warnx ("Bad value from SNMP");
+                     warnx ("Bad value from SNMP");
+               }
+               snmp_free_pdu (response);
             }
-            snmp_free_pdu (response);
          }
 #endif
          char *url;
