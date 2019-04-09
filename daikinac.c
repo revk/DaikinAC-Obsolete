@@ -62,7 +62,7 @@ int cmpfreqlow = 10;            // Low rate allowed
 int mqttperiod = 60;            // Logging period
 int resetlag = 900;             // Wait for any major change to stabilise
 int maxsamples = 60;            // For average logic
-int minsamples = 10;            // For average logic
+int minsamples = 5;             // For average logic
 const char *mqttid = NULL;      // MQTT settings
 const char *mqtthost = NULL;
 const char *mqttuser = NULL;
@@ -163,6 +163,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    if (!t)
       t = malloc (sizeof (*t) * maxsamples);    // Averaging data
 
+   int s;
    double atempdelta = atemp - lastatemp;       // Rate of change
    lastatemp = atemp;
 
@@ -171,15 +172,15 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       if (mode == 4 && (atemp >= target || atemp + atempdelta >= target) && cmpfreq > cmpfreqlow)
       {
          if (debug > 1)
-            warnx ("Stopping compressor %.1lf %d", atemp, cmpfreq);
-         *stempp = target - maxroffset;
+            warnx ("Stopping compressor heat %.1lf freq %d", atemp, cmpfreq);
+         *stempp = mintemp;
          return 1;
       }
       if (mode == 3 && (atemp <= target || atemp + atempdelta <= target) && cmpfreq > cmpfreqlow)
       {
          if (debug > 1)
-            warnx ("Stopping compressor %.1lf %d", atemp, cmpfreq);
-         *stempp = target + maxroffset;
+            warnx ("Stopping compressor cool %.1lf freq %d", atemp, cmpfreq);
+         *stempp = maxtemp;
          return 1;
       }
       return 0;                 // OK
@@ -188,6 +189,8 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    void resetdata (void)
    {                            // Reset average (set to start collecting after a lag) - used when a change happens
       reset = updated + resetlag;
+      for (s = 0; s < maxsamples; s++)
+         t[s] = -99;
    }
    void resetoffset (void)
    {                            // Reset the offset
@@ -230,6 +233,14 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    // Default
    *stempp = target + offset;   // Default
 
+   if (updated < reset)
+   {                            // Waiting for startup or major change - reset data
+      if (debug > 1)
+         warnx ("Waiting to settle (%ds) %.1lf", (int) (reset - updated), atemp);
+      overshootcheck ();
+      return;
+   }
+
    if (updated < nextsample)
    {                            // Waiting for next sample at sensible time
       overshootcheck ();
@@ -239,16 +250,6 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       nextsample = updated;
    nextsample += mqttperiod;
 
-   int s;
-   if (updated < reset)
-   {                            // Waiting for startup or major change - reset data
-      for (s = 0; s < maxsamples; s++)
-         t[s] = -99;
-      if (debug > 1)
-         warnx ("Waiting to settle (%ds) %.1lf", (int) (reset - updated), atemp);
-      overshootcheck ();
-      return;
-   }
    t[sample++] = atemp;
    if (sample >= maxsamples)
       sample = 0;
@@ -1156,7 +1157,7 @@ main (int argc, const char *argv[])
                         lasterr = newstemp - rtemp;
                         lastset = now;
                         if (debug)
-                           warnx ("Set %.2lf as %.1lf dither now %.2lf", rtemp, newstemp, dither);
+                           warnx ("Set %.2lf as %.1lf dither error now %.2lf", rtemp, newstemp, dither);
                      }
                      if (newstemp > maxtemp)
                         newstemp = maxtemp;
