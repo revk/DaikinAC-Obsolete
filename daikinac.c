@@ -1057,7 +1057,7 @@ main (int argc, const char *argv[])
             if (mqttatemp && !strcmp (topic, mqttatemp))
             {                   // Direct atemp topic set
                atemp = strtod (val, NULL);
-               atempset = time (0);
+               next = atempset = time (0);
                if (debug)
                   warnx ("atemp=%.1lf", atemp);
             } else
@@ -1080,7 +1080,7 @@ main (int argc, const char *argv[])
                   if (!mqttatemp && !strcmp (topic, "atemp"))
                   {
                      atemp = strtod (val, NULL);
-                     atempset = time (0);
+                     next = atempset = time (0);
                      if (debug)
                         warnx ("atemp=%.1lf", atemp);
                   }
