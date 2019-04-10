@@ -54,10 +54,11 @@ int debug = 0;
 #ifdef LIBMQTT                  // Auto settings are done based on MQTT cmnd/[name]/atemp periodically
 double maxtemp = 30;            // Aircon temp range allowed
 double mintemp = 18;
-double flip = 3;                // Max offset for flip
-double ripple = 0.0999999999;            // allow some ripple
-double maxroffset = 3;          // Max offset to apply (reverse)
-double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
+double ripple = 0.0999999999;   // allow some ripple
+double maxrheat = 2;          // Max offset to apply (reverse) - heating
+double maxfheat = 3;          // Max offset to apply (forward) - heating
+double maxrcool = 4;          // Max offset to apply (reverse) - cooling
+double maxfcool = 3;          // Max offset to apply (forward) - cooling
 double driftrate = 0.01;        // Per sample slow drift allowed
 double driftback = 0.999;       // slow return to 0
 int cmpfreqlow = 10;            // Low rate allowed
@@ -181,43 +182,43 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       return 0;                 // OK
 
    }
-   void resetdata (void)
+   void resetdata (time_t lag)
    {                            // Reset average (set to start collecting after a lag) - used when a change happens
-      reset = updated + resetlag;
+      reset = updated + lag;
       for (s = 0; s < maxsamples; s++)
          t[s] = -99;
    }
-   void resetoffset (void)
+   void resetoffset (time_t lag)
    {                            // Reset the offset
       offset = 0;
-      resetdata ();
+      resetdata (lag);
    }
    if (lasttarget != target)
    {                            // Assume offset still OK
       if (debug > 1 && reset < updated && lasttarget)
          warnx ("Target change to %.1lf - resetting", target);
       lasttarget = target;
-      resetdata ();
+      resetdata (resetlag);
    }
    if (lastf_rate != f_rate)
    {                            // Assume offset needs resetting
       if (debug > 1 && reset < updated && lastf_rate)
          warnx ("Fan change to %c - resetting", f_rate);
       lastf_rate = f_rate;
-      resetoffset ();
+      resetoffset (resetlag);
    }
    if (lastmode != mode)
    {                            // Assume offset needs resetting
       if (debug > 1 && reset < updated && lastmode)
          warnx ("Mode change to %s - resetting", modename[mode]);
       lastmode = mode;
-      resetoffset ();
+      resetoffset (resetlag);
    }
    if (!pow)
    {                            // Power off - assume offset needs resetting
       if (debug > 1 && reset < updated)
          warnx ("Power off - resetting");
-      resetoffset ();
+      resetoffset (resetlag);
    }
    if (mode == 2 || mode == 6)
    {
@@ -282,7 +283,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       if (debug > 1)
          warnx ("Step change by %+.1lf", step);
       offset += step;
-      resetdata ();
+      resetdata (resetlag / 3);
    } else if (ave < target - ripple)
       offset += driftrate;
    else if (ave > target + ripple)
@@ -290,44 +291,44 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    else
       offset *= driftback;
    // Check if we need to change mode
-   if ((mode == 4 && offset <= -flip) || (mode != 3 && mode != 4 && ave >= target))
+   if ((mode == 4 && offset <= -maxrheat) || (mode != 3 && mode != 4 && ave >= target))
    {
       if (debug > 1)
          warnx ("Changing to cool mode");
       mode = 3;                 // Heating and we are still too high so switch to cool
-      resetoffset ();
-   } else if ((mode == 3 && offset >= flip) || (mode != 3 && mode != 4 && ave <= target))
+      resetoffset (resetlag);
+   } else if ((mode == 3 && offset >= maxrcool) || (mode != 3 && mode != 4 && ave <= target))
    {
       if (debug > 1)
          warnx ("Changing to heat mode");
       mode = 4;                 // Cooling and we are still too low so switch to head
-      resetoffset ();
+      resetoffset (resetlag);
    }
    // Limit offset
-   if (mode == 4 && offset > maxfoffset)
+   if (mode == 4 && offset > maxfheat)
    {
-      offset = maxfoffset;
+      offset = maxfheat;
       if (f_rate == 'B')
       {
          if (debug > 1)
             warnx ("Changing to fan mode Auto");
          f_rate = 'A';          // Give up on night mode
-         resetoffset ();
+         resetoffset (resetlag);
       }
-   } else if (mode == 4 && offset < -maxroffset)
-      offset = -maxroffset;
-   else if (mode == 3 && offset < -maxfoffset)
+   } else if (mode == 4 && offset < -maxrheat)
+      offset = -maxrheat;
+   else if (mode == 3 && offset < -maxfcool)
    {
-      offset = -maxfoffset;
+      offset = -maxfcool;
       if (f_rate == 'B')
       {
          if (debug > 1)
             warnx ("Changing to fan mode Auto");
          f_rate = 'A';          // Give up on night mode
-         resetoffset ();
+         resetoffset (resetlag);
       }
-   } else if (mode == 3 && offset > maxroffset)
-      offset = maxroffset;
+   } else if (mode == 3 && offset > maxrcool)
+      offset = maxrcool;
    // Apply new temp
    stemp = target + offset;     // Apply offset
    if (debug > 1)
@@ -407,11 +408,8 @@ main (int argc, const char *argv[])
          { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
          { "mqtt-debug", 0, POPT_ARG_NONE, &mqttdebug, 0, "Debug"},
 	 { "mqtt-atemp", 0, POPT_ARG_STRING , &mqttatemp, 0, "MQTT topic to subscribe for setting atemp (default cmnd/[topic]/atemp)", "topic"},
-         { "flip", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &flip, 0, "Max reverse offset to flip modes", "C"},
          { "max-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &maxsamples, 0, "Max samples used for averaging", "N"},
          { "min-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &minsamples, 0, "Min samples used for averaging", "N"},
-         { "max-forward", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxfoffset, 0, "Max forward offset to apply", "C"},
-         { "max-reverse", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &maxroffset, 0, "Max reverse offset to apply", "C"},
          { "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
 #endif
 #ifdef LIBSNMP
