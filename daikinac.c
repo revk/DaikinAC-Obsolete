@@ -59,6 +59,7 @@ double ripple = 0.1;            // allow some ripple
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
 double driftrate = 0.01;        // Per sample slow drift allowed
+double driftback = 0.999;       // slow return to 0
 int cmpfreqlow = 10;            // Low rate allowed
 int mqttperiod = 60;            // Logging period
 int resetlag = 900;             // Wait for any major change to stabilise
@@ -170,21 +171,10 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
 
    int overshootcheck (void)
    {                            // react to going to overshoot
-      if (mode == 4 && (atemp >= target + ripple || atemp + atempdelta >= target + ripple) && cmpfreq > cmpfreqlow)
-      {
-         if (debug > 1)
-            warnx ("Stopping compressor heat %.1lf freq %d%s", atemp, cmpfreq,
-                   reset > updated ? " (starting to collect samples" : "");
-         *stempp = mintemp;
-         reset = 0;             // We hit end stop, so can start collecting data now
-         return 1;
-      }
-      if (mode == 3 && (atemp <= target - ripple || atemp + atempdelta <= target - ripple) && cmpfreq > cmpfreqlow)
-      {
-         if (debug > 1)
-            warnx ("Stopping compressor cool %.1lf freq %d%s", atemp, cmpfreq,
-                   reset > updated ? " (starting to collect samples" : "");
-         *stempp = maxtemp;
+      if ((mode == 4 && (atemp >= target + ripple || atemp + atempdelta > target + ripple) && cmpfreq > cmpfreqlow) ||
+          (mode == 3 && (atemp <= target - ripple || atemp + atempdelta < target - ripple) && cmpfreq > cmpfreqlow))
+      {                         // Time to stop compressor (setting temp 0 does this)
+         *stempp = 0;
          reset = 0;             // We hit end stop, so can start collecting data now
          return 1;
       }
@@ -297,6 +287,8 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       offset += driftrate;
    else if (ave > target + ripple)
       offset -= driftrate;
+   else
+      offset *= driftback;
    // Check if we need to change mode
    if ((mode == 4 && offset <= -flip) || (mode != 3 && mode != 4 && ave >= target))
    {
@@ -1152,6 +1144,7 @@ main (int argc, const char *argv[])
                      char newf_rate = thisf_rate;
                      int newmode = thismode;
                      doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow, atempset, atemp, thisdt1);
+                     if (newstemp)
                      {          // Rounding temp to 0.5C with error dither
                         static double dither = 0;
                         static double lasterr = 0;
@@ -1165,6 +1158,12 @@ main (int argc, const char *argv[])
                         lastset = now;
                         if (debug)
                            warnx ("Set %.2lf as %.1lf dither error was %+.2lf", rtemp, newstemp, dither);
+                     } else
+                     {          // Compressor stop
+                        newstemp = (newmode == 4 ? mintemp : maxtemp);
+                        next = now + 5; // Re check that it stopped
+                        if (debug)
+                           warnx ("Compressor stop at %.1lf", atemp);
                      }
                      if (newstemp > maxtemp)
                         newstemp = maxtemp;
