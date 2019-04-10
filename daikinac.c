@@ -55,7 +55,7 @@ int debug = 0;
 double maxtemp = 30;            // Aircon temp range allowed
 double mintemp = 18;
 double flip = 3;                // Max offset for flip
-double ripple = 0.1;            // allow some ripple
+double ripple = 0.2;            // allow some ripple
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
 double driftrate = 0.01;        // Per sample slow drift allowed
@@ -935,7 +935,8 @@ main (int argc, const char *argv[])
          fclose (o);
          url[--len] = 0;
          char *ok = get (url);
-         free (ok);
+         if (ok)
+            free (ok);
       }
 
       void updatedb (void)
@@ -1106,7 +1107,8 @@ main (int argc, const char *argv[])
                         fclose (o);
                      url[--len] = 0;
                      char *ok = get (url);
-                     free (ok);
+                     if (ok)
+                        free (ok);
                      if (mode && atoi (mode) && atoi (mode) != atoi (topic + 2))
                         changed = 1;    // Force setting back to right mode
                   }
@@ -1161,7 +1163,7 @@ main (int argc, const char *argv[])
                      } else
                      {          // Compressor stop
                         newstemp = (newmode == 4 ? mintemp : maxtemp);
-                        next = now + 5; // Re check that it stopped
+                        next = now + 10;        // Re check that it stopped
                         if (debug)
                            warnx ("Compressor stop at %.1lf", atemp);
                      }
