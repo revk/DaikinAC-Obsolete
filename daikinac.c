@@ -55,10 +55,12 @@ int debug = 0;
 double maxtemp = 30;            // Aircon temp range allowed
 double mintemp = 18;
 double ripple = 0.0999999999;   // allow some ripple
-double maxrheat = 2;          // Max offset to apply (reverse) - heating
-double maxfheat = 3;          // Max offset to apply (forward) - heating
-double maxrcool = 4;          // Max offset to apply (reverse) - cooling
-double maxfcool = 3;          // Max offset to apply (forward) - cooling
+double startheat = -1;          // Where to start heating
+double startcool = 1;           // Where to start cooling
+double maxrheat = 2;            // Max offset to apply (reverse) - heating
+double maxfheat = 3;            // Max offset to apply (forward) - heating
+double maxrcool = 4;            // Max offset to apply (reverse) - cooling
+double maxfcool = 3;            // Max offset to apply (forward) - cooling
 double driftrate = 0.01;        // Per sample slow drift allowed
 double driftback = 0.999;       // slow return to 0
 int cmpfreqlow = 10;            // Low rate allowed
@@ -190,7 +192,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    }
    void resetoffset (time_t lag)
    {                            // Reset the offset
-      offset = 0;
+      offset = (mode == 4 ? startheat : startcool);
       resetdata (lag);
    }
    if (lasttarget != target)
