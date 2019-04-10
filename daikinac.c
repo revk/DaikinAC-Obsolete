@@ -55,6 +55,7 @@ int debug = 0;
 double maxtemp = 30;            // Aircon temp range allowed
 double mintemp = 18;
 double flip = 3;                // Max offset for flip
+double ripple = 0.1;            // allow some ripple
 double maxroffset = 3;          // Max offset to apply (reverse)
 double maxfoffset = 6;          // Max offset to apply (forward) - mainly so big for B fan mode
 double driftrate = 0.01;        // Per sample slow drift allowed
@@ -169,7 +170,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
 
    int overshootcheck (void)
    {                            // react to going to overshoot
-      if (mode == 4 && (atemp >= target || atemp + atempdelta >= target) && cmpfreq > cmpfreqlow)
+      if (mode == 4 && (atemp >= target + ripple || atemp + atempdelta >= target + ripple) && cmpfreq > cmpfreqlow)
       {
          if (debug > 1)
             warnx ("Stopping compressor heat %.1lf freq %d%s", atemp, cmpfreq,
@@ -178,7 +179,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
          reset = 0;             // We hit end stop, so can start collecting data now
          return 1;
       }
-      if (mode == 3 && (atemp <= target || atemp + atempdelta <= target) && cmpfreq > cmpfreqlow)
+      if (mode == 3 && (atemp <= target - ripple || atemp + atempdelta <= target - ripple) && cmpfreq > cmpfreqlow)
       {
          if (debug > 1)
             warnx ("Stopping compressor cool %.1lf freq %d%s", atemp, cmpfreq,
@@ -292,9 +293,9 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
          warnx ("Step change by %+.1lf", step);
       offset += step;
       resetdata ();
-   } else if (ave < target)
+   } else if (ave < target - ripple)
       offset += driftrate;
-   else if (ave > target)
+   else if (ave > target + ripple)
       offset -= driftrate;
    // Check if we need to change mode
    if ((mode == 4 && offset <= -flip) || (mode != 3 && mode != 4 && ave >= target))
