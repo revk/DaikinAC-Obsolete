@@ -229,7 +229,6 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       return;
    }
    // Default
-   *stempp = target + offset;   // Default
    if (mode != 3 && mode != 4)
    {
       if (atemp > target)
@@ -248,6 +247,8 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       overshootcheck ();
       return;
    }
+
+   *stempp = target + offset;   // Default
 
    if (updated < reset)
    {                            // Waiting for startup or major change - reset data
