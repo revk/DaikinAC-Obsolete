@@ -1167,6 +1167,7 @@ main (int argc, const char *argv[])
                         next = now + 10;        // Re check that it stopped
                         if (debug)
                            warnx ("Compressor stop at %.1lf", atemp);
+			// TODO if htemp too close to limits this does not work and so may want to force fan mode?
                      }
                      if (newstemp > maxtemp)
                         newstemp = maxtemp;
