@@ -63,7 +63,7 @@ double maxrcool = 4;            // Max offset to apply (reverse) - cooling
 double maxfcool = 3;            // Max offset to apply (forward) - cooling
 double driftrate = 0.01;        // Per sample slow drift allowed
 double driftback = 0.999;       // slow return to 0
-int cmpfreqlow = 20;            // Low rate allowed
+int cmpfreqlow = 10;            // Low rate allowed
 int mqttperiod = 60;            // Logging period
 int resetlag = 900;             // Wait for any major change to stabilise
 int maxsamples = 60;            // For average logic
@@ -230,6 +230,22 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    }
    // Default
    *stempp = target + offset;   // Default
+   if (mode != 3 && mode != 4)
+   {
+      if (atemp > target)
+      {
+         if (debug > 1)
+            warnx ("Taking over - changing to cool mode");
+         mode = 3;              // Heating and we are still too high so switch to cool
+         resetoffset (resetlag);
+      } else
+      {
+         if (debug > 1)
+            warnx ("Taking over - changing to heat mode");
+         mode = 4;              // Cooling and we are still too low so switch to head
+         resetoffset (resetlag);
+      }
+   }
 
    if (updated < reset)
    {                            // Waiting for startup or major change - reset data
@@ -294,13 +310,13 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       offset *= driftback;
 
    // Check if we need to change mode
-   if ((mode == 4 && offset <= -maxrheat) || (mode != 3 && mode != 4 && ave >= target))
+   if (mode == 4 && offset <= -maxrheat)
    {
       if (debug > 1)
          warnx ("Changing to cool mode");
       mode = 3;                 // Heating and we are still too high so switch to cool
       resetoffset (resetlag);
-   } else if ((mode == 3 && offset >= maxrcool) || (mode != 3 && mode != 4 && ave <= target))
+   } else if (mode == 3 && offset >= maxrcool)
    {
       if (debug > 1)
          warnx ("Changing to heat mode");
@@ -1167,7 +1183,7 @@ main (int argc, const char *argv[])
                         next = now + 10;        // Re check that it stopped
                         if (debug)
                            warnx ("Compressor stop at %.1lf", atemp);
-			// TODO if htemp too close to limits this does not work and so may want to force fan mode? Maybe we try this and then fan mode?
+                        // TODO if htemp too close to limits this does not work and so may want to force fan mode? Maybe we try this and then fan mode?
                      }
                      if (newstemp > maxtemp)
                         newstemp = maxtemp;
