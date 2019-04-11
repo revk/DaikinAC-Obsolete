@@ -192,7 +192,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    }
    void resetoffset (time_t lag)
    {                            // Reset the offset
-      offset = (mode == 4 ? startheat : mode==3?startcool:0);
+      offset = (mode == 4 ? startheat : mode == 3 ? startcool : 0);
       resetdata (lag);
    }
    if (lasttarget != target)
@@ -307,7 +307,6 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       mode = 4;                 // Cooling and we are still too low so switch to head
       resetoffset (resetlag);
    }
-
    // Limit offset
    if (mode == 4 && offset > maxfheat)
    {
@@ -1162,7 +1161,7 @@ main (int argc, const char *argv[])
                         lastset = now;
                         if (debug)
                            warnx ("Set %.2lf as %.1lf dither error was %+.2lf", rtemp, newstemp, dither);
-                     } else
+                     } else if (newmode == 3 || newmode == 4)
                      {          // Compressor stop
                         newstemp = (newmode == 4 ? mintemp : maxtemp);
                         next = now + 10;        // Re check that it stopped
