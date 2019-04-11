@@ -54,7 +54,7 @@ int debug = 0;
 #ifdef LIBMQTT                  // Auto settings are done based on MQTT cmnd/[name]/atemp periodically
 double maxtemp = 30;            // Aircon temp range allowed
 double mintemp = 18;
-double ripple = 0.0999999999;   // allow some ripple
+double ripple = 0.1;   // allow some ripple
 double startheat = -1;          // Where to start heating
 double startcool = 1;           // Where to start cooling
 double maxrheat = 2;            // Max offset to apply (reverse) - heating
