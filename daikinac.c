@@ -236,15 +236,17 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       {
          if (debug > 1)
             warnx ("Taking over - changing to cool mode");
-         mode = 3;              // Heating and we are still too high so switch to cool
+         *modep = 3;            // Heating and we are still too high so switch to cool
          resetoffset (resetlag);
       } else
       {
          if (debug > 1)
             warnx ("Taking over - changing to heat mode");
-         mode = 4;              // Cooling and we are still too low so switch to head
+         *modep = 4;            // Cooling and we are still too low so switch to head
          resetoffset (resetlag);
       }
+      overshootcheck ();
+      return;
    }
 
    if (updated < reset)
