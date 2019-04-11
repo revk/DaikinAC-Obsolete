@@ -844,10 +844,14 @@ main (int argc, const char *argv[])
                   {
                      if (!strncmp (temp, "STRING: \"", 9))
                      {          // Really, this is crap!
-                        atemp = strtod (temp + 9, NULL);
-                        atempset = time (0);
-                        if (debug)
-                           warnx ("atemp=%.1lf (SNMP)", atemp);
+                        double v = strtod (temp + 9, NULL);
+                        if (v)
+                        {
+                           atemp = v;
+                           atempset = time (0);
+                           if (debug)
+                              warnx ("atemp=%.1lf (SNMP)", atemp);
+                        }
                      } else
                         warnx ("Unexpected value: %s", temp);
                   } else
@@ -980,7 +984,7 @@ main (int argc, const char *argv[])
          scan (sensor, update);
          scan (control, update);
 #ifdef	LIBMQTT
-         if (atempset && atempset > time (0) - mqttperiod * 2 && sql_colnum (fields, "atemp") >= 0)
+         if (atempset && sql_colnum (fields, "atemp") >= 0)
             sql_sprintf (&s, ",`atemp`=%.1lf", atemp);
 #endif
          sql_safe_query_s (&sql, &s);
@@ -1088,10 +1092,14 @@ main (int argc, const char *argv[])
             val[l] = 0;
             if (mqttatemp && !strcmp (topic, mqttatemp))
             {                   // Direct atemp topic set
-               atemp = strtod (val, NULL);
-               next = atempset = time (0);
-               if (debug)
-                  warnx ("atemp=%.1lf (MQTT)", atemp);
+               double v = strtod (val, NULL);
+               if (v)
+               {
+                  atemp = v;
+                  next = atempset = time (0);
+                  if (debug)
+                     warnx ("atemp=%.1lf (MQTT)", atemp);
+               }
             } else
             {
                l = strlen (mqttcmnd);
@@ -1110,10 +1118,14 @@ main (int argc, const char *argv[])
 #undef c
                   if (!mqttatemp && !strcmp (topic, "atemp"))
                   {
-                     atemp = strtod (val, NULL);
-                     next = atempset = time (0);
-                     if (debug)
-                        warnx ("atemp=%.1lf (MQTT)", atemp);
+                     double v = strtod (val, NULL);
+                     if (v)
+                     {
+                        atemp = v;
+                        next = atempset = time (0);
+                        if (debug)
+                           warnx ("atemp=%.1lf (MQTT)", atemp);
+                     }
                   }
                   if (topic[0] == 'd' && topic[1] == 't' && isdigit (topic[2]) && !topic[3])
                   {             // Special case, setting dtN means setting a mode and stemp
@@ -1160,6 +1172,12 @@ main (int argc, const char *argv[])
                if (getstatus ())
                {
                   updatestatus ();
+                  if (atempset && atempset < now - mqttperiod * 5)
+                  {
+                     atempset = 0;
+                     if (debug)
+                        warnx ("No temp set, stopping control");
+                  }
                   if (atempset)
                   {             // Automatic processing
                      double newstemp = thisstemp;
@@ -1234,7 +1252,7 @@ main (int argc, const char *argv[])
                   }
                   scan (sensor, check);
                   scan (control, check);
-                  if (atempset && atempset > now - mqttperiod * 2)
+                  if (atempset)
                      xml_addf (stat, "@atemp", "%.1lf", atemp);
                   char *statbuf = NULL;
                   size_t statlen = 0;
