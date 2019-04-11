@@ -54,7 +54,7 @@ int debug = 0;
 #ifdef LIBMQTT                  // Auto settings are done based on MQTT cmnd/[name]/atemp periodically
 double maxtemp = 30;            // Aircon temp range allowed
 double mintemp = 18;
-double ripple = 0.1;   // allow some ripple
+double ripple = 0.1;            // allow some ripple
 double startheat = -1;          // Where to start heating
 double startcool = 1;           // Where to start cooling
 double maxrheat = 2;            // Max offset to apply (reverse) - heating
@@ -192,7 +192,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    }
    void resetoffset (time_t lag)
    {                            // Reset the offset
-      offset = (mode == 4 ? startheat : startcool);
+      offset = (mode == 4 ? startheat : mode==3?startcool:0);
       resetdata (lag);
    }
    if (lasttarget != target)
@@ -292,6 +292,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       offset -= driftrate;
    else
       offset *= driftback;
+
    // Check if we need to change mode
    if ((mode == 4 && offset <= -maxrheat) || (mode != 3 && mode != 4 && ave >= target))
    {
@@ -306,6 +307,7 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
       mode = 4;                 // Cooling and we are still too low so switch to head
       resetoffset (resetlag);
    }
+
    // Limit offset
    if (mode == 4 && offset > maxfheat)
    {
@@ -1065,6 +1067,7 @@ main (int argc, const char *argv[])
             }
             char *val = malloc (l + 1);
             memcpy (val, p, l);
+            val[l] = 0;
             if (mqttatemp && !strcmp (topic, mqttatemp))
             {                   // Direct atemp topic set
                atemp = strtod (val, NULL);
@@ -1084,7 +1087,6 @@ main (int argc, const char *argv[])
                if (getstatus ())
                {
                   updatestatus ();
-                  val[l] = 0;
 #define	c(x,t,v) if(!strcmp(#x,topic)){if(val&&(!x||strcmp(x,val))){if(x)free(x);x=strdup(val);changed=1;}}
                   controlfields;
 #undef c
