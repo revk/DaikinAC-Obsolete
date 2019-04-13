@@ -1038,6 +1038,9 @@ main (int argc, const char *argv[])
          if (e)
             errx (1, "MQTT init failed %s", mosquitto_strerror (e));
          struct mosquitto *mqtt = mosquitto_new (mqttid ? : ip, 1, NULL);
+         e = mosquitto_username_pw_set (mqtt, mqttuser, mqttpass);
+         if (e)
+            errx (1, "MQTT auth failed %s", mosquitto_strerror (e));
          void connect (struct mosquitto *mqtt, void *obj, int rc)
          {
             obj = obj;
