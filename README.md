@@ -21,3 +21,5 @@ MQTT cmnd/[topic]/atemp to set actual temp in C. Ideally send every minute.
 Option to build with snmp library and collect temperature directly every minute.
 
 See --help for more info.
+
+(c) Copyright 2019 Adrian Kennard. See LICENSE file (GPL)
