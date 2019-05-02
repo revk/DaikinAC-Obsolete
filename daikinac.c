@@ -315,16 +315,36 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    // Check if we need to change mode
    if (mode == 4 && offset <= -maxrheat)
    {
+	   if(f_rate=='A')
+	   {
+      if (debug > 1)
+         warnx ("Changing to fan mode Night");
+      f_rate='B';
+         resetoffset (resetlag);
+	   }
+	   else
+	   {
       if (debug > 1)
          warnx ("Changing to cool mode");
       mode = 3;                 // Heating and we are still too high so switch to cool
       resetoffset (resetlag);
+	   }
    } else if (mode == 3 && offset >= maxrcool)
    {
+	   if(f_rate=='A')
+	   {
+      if (debug > 1)
+         warnx ("Changing to fan mode Night");
+      f_rate='B';
+         resetoffset (resetlag);
+	   }
+	   else
+	   {
       if (debug > 1)
          warnx ("Changing to heat mode");
       mode = 4;                 // Cooling and we are still too low so switch to head
       resetoffset (resetlag);
+	   }
    }
    // Limit offset
    if (mode == 4 && offset > maxfheat)
@@ -756,7 +776,7 @@ main (int argc, const char *argv[])
       int thiscmpfreq = 0;
       int thismode = 0;
       double thisstemp = 0,
-         thisdt1 = 0;
+      thisdt[10] = { };
       char thisf_rate = 0;
       time_t atempset = 0;      // Time last set
       double atemp = 0;         // Last set
@@ -816,7 +836,7 @@ main (int argc, const char *argv[])
 #ifdef	LIBMQTT
          thisstemp = 0;
          thisf_rate = 0;
-         thisdt1 = 0;
+         memset (&thisdt, 0, sizeof (thisdt));
          thispow = 0;
          thismompow = 0;
          thiscmpfreq = 0;
@@ -938,8 +958,8 @@ main (int argc, const char *argv[])
                thisf_rate = *val;
             else if (!strcmp (tag, "stemp"))
                thisstemp = strtod (val, NULL);
-            else if (!strcmp (tag, "dt1"))
-               thisdt1 = strtod (val, NULL);
+            else if (!strncmp (tag, "dt", 2) && isdigit (tag[2]))
+               thisdt[tag[2] - '0'] = strtod (val, NULL);
          }
          scan (sensor, check);
          scan (control, check);
@@ -1116,6 +1136,12 @@ main (int argc, const char *argv[])
                if (getstatus ())
                {
                   updatestatus ();
+                  if (!strcmp (topic, "mode") && val && isdigit (*val))
+                  {             // New temp for mode
+                     if (stemp)
+                        free (stemp);
+                     asprintf (&stemp, "%.1lf", thisdt[*val - '0']);
+                  }
 #define	c(x,t,v) if(!strcmp(#x,topic)){if(val&&(!x||strcmp(x,val))){if(x)free(x);x=strdup(val);changed=1;}}
                   controlfields;
 #undef c
@@ -1186,7 +1212,7 @@ main (int argc, const char *argv[])
                      double newstemp = thisstemp;
                      char newf_rate = thisf_rate;
                      int newmode = thismode;
-                     doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow, atempset, atemp, thisdt1);
+                     doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow, atempset, atemp, thisdt[1]);
                      if (newstemp)
                      {          // Rounding temp to 0.5C with error dither
                         static double dither = 0;
@@ -1289,6 +1315,8 @@ main (int argc, const char *argv[])
       {                         // Process for each IP
          if (getstatus ())
          {
+            if (setmode && isdigit (*setmode) && !setstemp)
+               asprintf (&setstemp, "%.1lf", thisdt[*setmode - '0']);   // Pick up temp from new mode
             updatestatus (sensor, control);
 #define	c(x,t,v) if(set##x&&x&&strcmp(x,set##x)){changed=1;if(x)free(x);x=strdup(set##x);}
             controlfields;
