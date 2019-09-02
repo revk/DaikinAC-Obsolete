@@ -10,9 +10,9 @@ else
 LIBSNMP=
 endif
 
-SQLINC=$(shell mysql_config --include)
-SQLLIB=$(shell mysql_config --libs)
-SQLVER=$(shell mysql_config --version | sed 'sx\..*xx')
+SQLINC=$(shell mariadb_config --include)
+SQLLIB=$(shell mariadb_config --libs)
+SQLVER=$(shell mariadb_config --version | sed 'sx\..*xx')
 CCOPTS=${SQLINC} -I. -I/usr/local/ssl/include -D_GNU_SOURCE -g -Wall -funsigned-char -lm
 OPTS=-L/usr/local/ssl/lib ${SQLLIB} ${CCOPTS}
 
