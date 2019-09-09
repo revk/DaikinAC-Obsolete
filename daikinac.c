@@ -76,6 +76,8 @@ const char *mqtttopic = "diakin";
 const char *mqttcmnd = "cmnd";
 const char *mqtttele = "tele";
 char *mqttatemp = NULL;
+char *mqttco2 = NULL;
+char *mqttrh = NULL;
 
         // This function does automatic temperature adjust
         // If SQL available it is called at start with recent data, in order to catch up any state it needs
@@ -315,36 +317,34 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    // Check if we need to change mode
    if (mode == 4 && offset <= -maxrheat)
    {
-	   if(f_rate=='A')
-	   {
-      if (debug > 1)
-         warnx ("Changing to fan mode Night");
-      f_rate='B';
+      if (f_rate == 'A')
+      {
+         if (debug > 1)
+            warnx ("Changing to fan mode Night");
+         f_rate = 'B';
          resetoffset (resetlag);
-	   }
-	   else
-	   {
-      if (debug > 1)
-         warnx ("Changing to cool mode");
-      mode = 3;                 // Heating and we are still too high so switch to cool
-      resetoffset (resetlag);
-	   }
+      } else
+      {
+         if (debug > 1)
+            warnx ("Changing to cool mode");
+         mode = 3;              // Heating and we are still too high so switch to cool
+         resetoffset (resetlag);
+      }
    } else if (mode == 3 && offset >= maxrcool)
    {
-	   if(f_rate=='A')
-	   {
-      if (debug > 1)
-         warnx ("Changing to fan mode Night");
-      f_rate='B';
+      if (f_rate == 'A')
+      {
+         if (debug > 1)
+            warnx ("Changing to fan mode Night");
+         f_rate = 'B';
          resetoffset (resetlag);
-	   }
-	   else
-	   {
-      if (debug > 1)
-         warnx ("Changing to heat mode");
-      mode = 4;                 // Cooling and we are still too low so switch to head
-      resetoffset (resetlag);
-	   }
+      } else
+      {
+         if (debug > 1)
+            warnx ("Changing to heat mode");
+         mode = 4;              // Cooling and we are still too low so switch to head
+         resetoffset (resetlag);
+      }
    }
    // Limit offset
    if (mode == 4 && offset > maxfheat)
@@ -449,7 +449,9 @@ main (int argc, const char *argv[])
          { "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
          { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
          { "mqtt-debug", 0, POPT_ARG_NONE, &mqttdebug, 0, "Debug"},
-	 { "mqtt-atemp", 0, POPT_ARG_STRING , &mqttatemp, 0, "MQTT topic to subscribe for setting atemp (default cmnd/[topic]/atemp)", "topic"},
+	 { "mqtt-atemp", 0, POPT_ARG_STRING , &mqttatemp, 0, "MQTT topic to subscribe for setting atemp", "topic"},
+	 { "mqtt-rh", 0, POPT_ARG_STRING , &mqttrh, 0, "MQTT topic to subscribe for setting rh", "topic"},
+	 { "mqtt-co2", 0, POPT_ARG_STRING , &mqttco2, 0, "MQTT topic to subscribe for setting co2", "topic"},
          { "max-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &maxsamples, 0, "Max samples used for averaging", "N"},
          { "min-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &minsamples, 0, "Min samples used for averaging", "N"},
          { "lock", 0, POPT_ARG_NONE, &dolock, 0, "Lock operation"},
@@ -556,6 +558,8 @@ main (int argc, const char *argv[])
                stempref = -1;
             char lastf_rate = 0;
             size_t atemplen = 0,
+               co2len = 0,
+               rhlen = 0,
                htemplen = 0,
                otemplen = 0,
                mompowlen = 0,
@@ -566,6 +570,8 @@ main (int argc, const char *argv[])
                coolblen = 0,
                dt1len = 0;
             char *atempbuf = NULL,
+               *co2buf = NULL,
+               *rhbuf = NULL,
                *htempbuf = NULL,
                *otempbuf = NULL,
                *mompowbuf = NULL,
@@ -576,12 +582,16 @@ main (int argc, const char *argv[])
                *coolbbuf = NULL,
                *dt1buf = NULL;
             char atempm = 'M',
+               co2m = 'M',
+               rhm = 'M',
                htempm = 'M',
                otempm = 'M',
                mompowm = 'M',
                cmpfreqm = 'M',
                dt1m = 'M';
             FILE *atemp = open_memstream (&atempbuf, &atemplen);
+            FILE *co2 = open_memstream (&co2buf, &co2len);
+            FILE *rh = open_memstream (&rhbuf, &rhlen);
             FILE *htemp = open_memstream (&htempbuf, &htemplen);
             FILE *otemp = open_memstream (&otempbuf, &otemplen);
             FILE *mompow = open_memstream (&mompowbuf, &mompowlen);
@@ -607,6 +617,20 @@ main (int argc, const char *argv[])
                   d = strtod (v, NULL);
                   fprintf (atemp, "%c%.2lf,%d", atempm, x, (int) (svgheight - (d - svgl) * svgc));
                   atempm = 'L';
+               }
+               v = sql_col (res, "co2");
+               if (v)
+               {
+                  d = strtod (v, NULL);
+                  fprintf (co2, "%c%.2lf,%d", co2m, x, (int) (svgheight - (d - 400)));
+                  co2m = 'L';
+               }
+               v = sql_col (res, "rh");
+               if (v)
+               {
+                  d = strtod (v, NULL);
+                  fprintf (rh, "%c%.2lf,%d", rhm, x, (int) (svgheight - d * 10));
+                  rhm = 'L';
                }
                v = sql_col (res, "htemp");
                if (v)
@@ -680,6 +704,8 @@ main (int argc, const char *argv[])
                fprintf (lastf_rate == 'B' ? heatb : heat, "L%.2lf,%dL%.2lf,%dL%.2lf,%dZ", x, lasty, x, svgheight, stempref,
                         svgheight);
             fclose (atemp);
+            fclose (co2);
+            fclose (rh);
             fclose (htemp);
             fclose (otemp);
             fclose (mompow);
@@ -694,12 +720,16 @@ main (int argc, const char *argv[])
             xml_addf (svg, "+path@fill=blue@stroke=none@opacity=0.5@d", coolbuf);
             xml_addf (svg, "+path@fill=blue@stroke=none@opacity=0.25@d", coolbbuf);
             xml_addf (svg, "+path@fill=none@stroke=red@stroke-linecap=round@stroke-linejoin=round@d", atempbuf);
+            xml_addf (svg, "+path@fill=none@stroke=orange@stroke-linecap=round@stroke-linejoin=round@d", co2buf);
+            xml_addf (svg, "+path@fill=none@stroke=cyan@stroke-linecap=round@stroke-linejoin=round@d", rhbuf);
             xml_addf (svg, "+path@fill=none@stroke=green@stroke-linecap=round@stroke-linejoin=round@d", htempbuf);
             xml_addf (svg, "+path@fill=none@stroke=blue@stroke-linecap=round@stroke-linejoin=round@d", otempbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-linecap=round@stroke-linejoin=round@d", mompowbuf);
             xml_addf (svg, "+path@fill=none@stroke=green@@opacity=0.5@stroke-linecap=round@stroke-linejoin=round@d", cmpfreqbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-dasharray=1@d", dt1buf);
             free (atempbuf);
+            free (co2buf);
+            free (rhbuf);
             free (htempbuf);
             free (otempbuf);
             free (mompowbuf);
@@ -779,7 +809,11 @@ main (int argc, const char *argv[])
       thisdt[10] = { };
       char thisf_rate = 0;
       time_t atempset = 0;      // Time last set
+      time_t co2set = 0;
+      time_t rhset = 0;
       double atemp = 0;         // Last set
+      double co2 = 0;
+      double rh = 0;
 #endif
       const char *ip;
 #define c(x,t,v) char *x=NULL;  // Current settings
@@ -1006,6 +1040,10 @@ main (int argc, const char *argv[])
 #ifdef	LIBMQTT
          if (atempset && sql_colnum (fields, "atemp") >= 0)
             sql_sprintf (&s, ",`atemp`=%.1lf", atemp);
+         if (co2set && sql_colnum (fields, "co2") >= 0)
+            sql_sprintf (&s, ",`co2`=%.1lf", co2);
+         if (rhset && sql_colnum (fields, "rh") >= 0)
+            sql_sprintf (&s, ",`rh`=%.1lf", rh);
 #endif
          sql_safe_query_s (&sql, &s);
 #endif
@@ -1083,6 +1121,22 @@ main (int argc, const char *argv[])
                if (debug)
                   warnx ("MQTT subscribed to: [%s]", mqttatemp);
             }
+            if (mqttco2)
+            {
+               int e = mosquitto_subscribe (mqtt, NULL, mqttco2, 0);
+               if (e)
+                  errx (1, "MQTT subscribe failed %s", mosquitto_strerror (e));
+               if (debug)
+                  warnx ("MQTT subscribed to: [%s]", mqttco2);
+            }
+            if (mqttrh)
+            {
+               int e = mosquitto_subscribe (mqtt, NULL, mqttrh, 0);
+               if (e)
+                  errx (1, "MQTT subscribe failed %s", mosquitto_strerror (e));
+               if (debug)
+                  warnx ("MQTT subscribed to: [%s]", mqttrh);
+            }
             free (sub);
          }
          void disconnect (struct mosquitto *mqtt, void *obj, int rc)
@@ -1122,6 +1176,26 @@ main (int argc, const char *argv[])
                   next = atempset = time (0);
                   if (debug)
                      warnx ("atemp=%.1lf (MQTT)", atemp);
+               }
+            } else if (mqttco2 && !strcmp (topic, mqttco2))
+            {                   // Direct co2 topic set
+               double v = strtod (val, NULL);
+               if (v)
+               {
+                  co2 = v;
+                  co2set = time (0);
+                  if (debug)
+                     warnx ("co2=%.1lf (MQTT)", co2);
+               }
+            } else if (mqttrh && !strcmp (topic, mqttrh))
+            {                   // Direct rh topic set
+               double v = strtod (val, NULL);
+               if (v)
+               {
+                  rh = v;
+                  rhset = time (0);
+                  if (debug)
+                     warnx ("rh=%.1lf (MQTT)", rh);
                }
             } else
             {
@@ -1206,6 +1280,18 @@ main (int argc, const char *argv[])
                      atempset = 0;
                      if (debug)
                         warnx ("No temp set, stopping control");
+                  }
+                  if (co2set && co2set < now - mqttperiod * 5)
+                  {
+                     co2set = 0;
+                     if (debug)
+                        warnx ("No CO2 set");
+                  }
+                  if (rhset && rhset < now - mqttperiod * 5)
+                  {
+                     rhset = 0;
+                     if (debug)
+                        warnx ("No CO2 set");
                   }
                   if (atempset)
                   {             // Automatic processing
