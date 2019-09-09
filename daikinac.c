@@ -622,7 +622,7 @@ main (int argc, const char *argv[])
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (co2, "%c%.2lf,%d", co2m, x, (int) (svgheight - (d - 400)));
+                  fprintf (co2, "%c%.2lf,%d", co2m, x, (int) (svgheight - (d - 400)/2));
                   co2m = 'L';
                }
                v = sql_col (res, "rh");
