@@ -396,6 +396,9 @@ main (int argc, const char *argv[])
    const char *table = "daikin";
    const char *svgdate = NULL;
    int maxcmpfreq = 100;
+   int co2l = 400;              // Base CO2
+   int co2scale = 2;
+   int rhscale = 10;
    int svgl = 2;                // Low C
    int svgt = 32;               // High C
    int svgc = 25;               // Per C spacing height
@@ -622,14 +625,14 @@ main (int argc, const char *argv[])
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (co2, "%c%.2lf,%d", co2m, x, (int) (svgheight - (d - 400)/2));
+                  fprintf (co2, "%c%.2lf,%d", co2m, x, (int) (svgheight - (d - co2l) / co2scale));
                   co2m = 'L';
                }
                v = sql_col (res, "rh");
                if (v)
                {
                   d = strtod (v, NULL);
-                  fprintf (rh, "%c%.2lf,%d", rhm, x, (int) (svgheight - d * 10));
+                  fprintf (rh, "%c%.2lf,%d", rhm, x, (int) (svgheight - d * rhscale));
                   rhm = 'L';
                }
                v = sql_col (res, "htemp");
@@ -727,6 +730,81 @@ main (int argc, const char *argv[])
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-linecap=round@stroke-linejoin=round@d", mompowbuf);
             xml_addf (svg, "+path@fill=none@stroke=green@@opacity=0.5@stroke-linecap=round@stroke-linejoin=round@d", cmpfreqbuf);
             xml_addf (svg, "+path@fill=none@stroke=black@stroke-dasharray=1@d", dt1buf);
+            {
+               int x,
+                 y;
+               // Time
+               for (x = 0; x < svgwidth + 1; x += svgh)
+               {
+                  xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@stroke-dasharray=1@stroke-width=0.5@d", "M%d 0v%d", x,
+                            svgheight + maxcmpfreq);
+                  xml_t t = xml_addf (svg, "+text", "%02d", (x / svgh) % 24);
+                  xml_addf (t, "@x", "%d", x);
+                  xml_addf (t, "@y", "%d", svgheight);
+                  xml_add (t, "@text-anchor", "middle");
+               }
+               // Lines
+               for (y = svgc; y < svgheight; y += svgc)
+                  xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@stroke-dasharray=1@stroke-width=0.5@d", "M0 %dh%d",
+                            svgheight - y, svgwidth);
+               if (*atempbuf || *otempbuf || *htempbuf)
+               {                // Temp scale
+                  for (y = svgc; y < svgheight; y += svgc)
+                  {
+                     xml_t t = xml_addf (svg, "+text", "%d", y / svgc + svgl);
+                     xml_addf (t, "@opacity", "0.5");
+                     xml_addf (t, "@fill", "red");
+                     xml_addf (t, "@text-anchor", "end");
+                     xml_addf (t, "@x", "%d", 20);
+                     xml_addf (t, "@y", "%d", svgheight - y);
+                     xml_add (t, "@alignment-baseline", "middle");
+                  }
+                  xml_t t = xml_add (svg, "+text", "℃");
+                  xml_addf (t, "@opacity", "0.5");
+                  xml_addf (t, "@fill", "red");
+                  xml_addf (t, "@text-anchor", "end");
+                  xml_addf (t, "@x", "%d", 20);
+                  xml_addf (t, "@y", "%d", 12);
+               }
+               if (*co2buf)
+               {                // CO2 scale
+                  for (y = svgc; y < svgheight; y += svgc)
+                  {
+                     xml_t t = xml_addf (svg, "+text", "%d", y * co2scale + co2l);
+                     xml_addf (t, "@opacity", "0.5");
+                     xml_addf (t, "@fill", "orange");
+                     xml_addf (t, "@text-anchor", "end");
+                     xml_addf (t, "@x", "%d", 60);
+                     xml_addf (t, "@y", "%d", svgheight - y);
+                     xml_add (t, "@alignment-baseline", "middle");
+                  }
+                  xml_t t = xml_add (svg, "+text", "%R/H");
+                  xml_addf (t, "@opacity", "0.5");
+                  xml_addf (t, "@fill", "orange");
+                  xml_addf (t, "@text-anchor", "end");
+                  xml_addf (t, "@x", "%d", 60);
+                  xml_addf (t, "@y", "%d", 12);
+               }
+               if (*rhbuf)
+               {                // RH scale
+                  for (y = svgc; y < svgheight; y += svgc)
+                  {
+                     xml_t t = xml_addf (svg, "+text", "%d", y / rhscale);
+                     xml_addf (t, "@opacity", "0.5");
+                     xml_addf (t, "@fill", "cyan");
+                     xml_addf (t, "@text-anchor", "end");
+                     xml_addf (t, "@x", "%d", 90);
+                     xml_addf (t, "@y", "%d", svgheight - y);
+                     xml_add (t, "@alignment-baseline", "middle");
+                  }
+                  xml_t t = xml_add (svg, "+text", "CO₂");
+                  xml_addf (t, "@opacity", "0.5");
+                  xml_addf (t, "@fill", "cyan");
+                  xml_addf (t, "@text-anchor", "end");
+                  xml_addf (t, "@x", "%d", 90);
+                  xml_addf (t, "@y", "%d", 12);
+               }
+            }
             free (atempbuf);
             free (co2buf);
             free (rhbuf);
@@ -739,29 +817,6 @@ main (int argc, const char *argv[])
             free (heatbbuf);
             free (coolbuf);
             free (coolbbuf);
-            {
-               // Time of day and headings
-               int x,
-                 y;
-               for (x = 0; x < svgwidth + 1; x += svgh)
-               {
-                  xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@stroke-dasharray=1@stroke-width=0.5@d", "M%d 0v%d", x,
-                            svgheight + maxcmpfreq);
-                  xml_t t = xml_addf (svg, "+text", "%02d", (x / svgh) % 24);
-                  xml_addf (t, "@x", "%d", x);
-                  xml_addf (t, "@y", "%d", svgheight);
-                  xml_add (t, "@text-anchor", "middle");
-               }
-               for (y = svgc; y < svgheight; y += svgc)
-               {
-                  xml_addf (svg, "+path@stroke=grey@fill=none@opacity=0.5@stroke-dasharray=1@stroke-width=0.5@d", "M0 %dh%d",
-                            svgheight - y, svgwidth);
-                  xml_t t = xml_addf (svg, "+text", "%d℃", y / svgc + svgl);
-                  xml_addf (t, "@x", "%d", 0);
-                  xml_addf (t, "@y", "%d", svgheight - y);
-                  xml_add (t, "@alignment-baseline", "middle");
-               }
-            }
             sql_free_result (res);
             sql_close (&sql);
             xml_write (stdout, svg);
