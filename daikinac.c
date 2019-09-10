@@ -797,7 +797,7 @@ main (int argc, const char *argv[])
                      xml_addf (t, "@y", "%d", svgheight - y);
                      xml_add (t, "@alignment-baseline", "middle");
                   }
-                  xml_t t = xml_add (svg, "+text", "%R/H");
+                  xml_t t = xml_add (svg, "+text", "RH");
                   xml_addf (t, "@opacity", "0.5");
                   xml_addf (t, "@fill", "cyan");
                   xml_addf (t, "@text-anchor", "end");
