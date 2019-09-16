@@ -1090,7 +1090,8 @@ main (int argc, const char *argv[])
 #define c(x,t,v) if(!strcmp(#x,tag)&&x)val=x;   // Use the setting we now have
             controlfields;
 #undef c
-	    if(!strcmp(tag,"otemp")&&otempset)return;
+            if (!strcmp (tag, "otemp") && mqttotemp)
+               return;
             sql_sprintf (&s, ",`%#S`=%#s", tag, val);
          }
          scan (sensor, update);
@@ -1245,7 +1246,7 @@ main (int argc, const char *argv[])
                   if (debug)
                      warnx ("atemp=%.1lf (MQTT)", atemp);
                }
-	    } else if (mqttotemp && !strcmp (topic, mqttotemp))
+            } else if (mqttotemp && !strcmp (topic, mqttotemp))
             {                   // Direct otemp topic set
                double v = strtod (val, NULL);
                if (v)
