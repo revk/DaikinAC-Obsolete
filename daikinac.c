@@ -75,6 +75,7 @@ const char *mqttpass = NULL;
 const char *mqtttopic = "diakin";
 const char *mqttcmnd = "cmnd";
 const char *mqtttele = "tele";
+char *mqttotemp = NULL;
 char *mqttatemp = NULL;
 char *mqttco2 = NULL;
 char *mqttrh = NULL;
@@ -453,6 +454,7 @@ main (int argc, const char *argv[])
          { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
          { "mqtt-debug", 0, POPT_ARG_NONE, &mqttdebug, 0, "Debug"},
 	 { "mqtt-atemp", 0, POPT_ARG_STRING , &mqttatemp, 0, "MQTT topic to subscribe for setting atemp", "topic"},
+	 { "mqtt-otemp", 0, POPT_ARG_STRING , &mqttotemp, 0, "MQTT topic to subscribe for setting otemp", "topic"},
 	 { "mqtt-rh", 0, POPT_ARG_STRING , &mqttrh, 0, "MQTT topic to subscribe for setting rh", "topic"},
 	 { "mqtt-co2", 0, POPT_ARG_STRING , &mqttco2, 0, "MQTT topic to subscribe for setting co2", "topic"},
          { "max-samples", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &maxsamples, 0, "Max samples used for averaging", "N"},
@@ -839,9 +841,7 @@ main (int argc, const char *argv[])
 
       if (atemphost)
       {
-
          init_snmp ("Temp Check");
-
          snmp_sess_init (&session);
          session.version = SNMP_VERSION_2c;
          session.community = (unsigned char *) atempcommunity;
@@ -864,9 +864,11 @@ main (int argc, const char *argv[])
       thisdt[10] = { };
       char thisf_rate = 0;
       time_t atempset = 0;      // Time last set
+      time_t otempset = 0;      // Time last set
       time_t co2set = 0;
       time_t rhset = 0;
       double atemp = 0;         // Last set
+      double otemp = 0;         // Last set
       double co2 = 0;
       double rh = 0;
 #endif
@@ -1095,6 +1097,8 @@ main (int argc, const char *argv[])
 #ifdef	LIBMQTT
          if (atempset && sql_colnum (fields, "atemp") >= 0)
             sql_sprintf (&s, ",`atemp`=%.1lf", atemp);
+         if (otempset && sql_colnum (fields, "otemp") >= 0)
+            sql_sprintf (&s, ",`otemp`=%.1lf", otemp);
          if (co2set && sql_colnum (fields, "co2") >= 0)
             sql_sprintf (&s, ",`co2`=%.1lf", co2);
          if (rhset && sql_colnum (fields, "rh") >= 0)
@@ -1176,6 +1180,14 @@ main (int argc, const char *argv[])
                if (debug)
                   warnx ("MQTT subscribed to: [%s]", mqttatemp);
             }
+            if (mqttotemp)
+            {
+               int e = mosquitto_subscribe (mqtt, NULL, mqttotemp, 0);
+               if (e)
+                  errx (1, "MQTT subscribe failed %s", mosquitto_strerror (e));
+               if (debug)
+                  warnx ("MQTT subscribed to: [%s]", mqttotemp);
+            }
             if (mqttco2)
             {
                int e = mosquitto_subscribe (mqtt, NULL, mqttco2, 0);
@@ -1231,6 +1243,16 @@ main (int argc, const char *argv[])
                   next = atempset = time (0);
                   if (debug)
                      warnx ("atemp=%.1lf (MQTT)", atemp);
+               }
+	    } else if (mqttotemp && !strcmp (topic, mqttotemp))
+            {                   // Direct otemp topic set
+               double v = strtod (val, NULL);
+               if (v)
+               {
+                  otemp = v;
+                  next = otempset = time (0);
+                  if (debug)
+                     warnx ("otemp=%.1lf (MQTT)", otemp);
                }
             } else if (mqttco2 && !strcmp (topic, mqttco2))
             {                   // Direct co2 topic set
