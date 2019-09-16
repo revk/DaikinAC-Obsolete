@@ -1090,6 +1090,7 @@ main (int argc, const char *argv[])
 #define c(x,t,v) if(!strcmp(#x,tag)&&x)val=x;   // Use the setting we now have
             controlfields;
 #undef c
+	    if(!strcmp(tag,"otemp")&&otempset)return;
             sql_sprintf (&s, ",`%#S`=%#s", tag, val);
          }
          scan (sensor, update);
