@@ -57,8 +57,8 @@ double mintemp = 18;
 double ripple = 0.1;            // allow some ripple
 double startheat = -1;          // Where to start heating
 double startcool = 1;           // Where to start cooling
-double maxrheat = 2;            // Max offset to apply (reverse) - heating
-double maxfheat = 3;            // Max offset to apply (forward) - heating
+double maxrheat = 1;            // Max offset to apply (reverse) - heating
+double maxfheat = 2;            // Max offset to apply (forward) - heating
 double maxrcool = 4;            // Max offset to apply (reverse) - cooling
 double maxfcool = 3;            // Max offset to apply (forward) - cooling
 double driftrate = 0.01;        // Per sample slow drift allowed
@@ -304,9 +304,9 @@ doauto (double *stempp, char *f_ratep, int *modep,      //
    if (min > target || max < target)
    {                            // Step change
       double step = target - (min > target ? min : max);
-      if (debug > 1)
-         warnx ("Step change by %+.1lf", step);
       offset += step;
+      if (debug > 1)
+         warnx ("Step change by %+.1lf (min %.1lf target %.1lf max %.1lf) offset now %.1lf", step, min, target, max, offset);
       resetdata (resetlag / 3);
    } else if (ave < target - ripple)
       offset += driftrate;
