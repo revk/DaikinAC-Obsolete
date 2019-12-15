@@ -65,7 +65,7 @@ double driftrate = 0.01;        // Per sample slow drift allowed
 double driftback = 0.999;       // slow return to 0
 int cmpfreqlow = 10;            // Low rate allowed
 int mqttperiod = 60;            // Logging period
-int mqttmaxdelay=3600;		// Max delay reporting
+int mqttmaxdelay = 3600;        // Max delay reporting
 int resetlag = 900;             // Wait for any major change to stabilise
 int maxsamples = 60;            // For average logic
 int minsamples = 5;             // For average logic
@@ -1379,7 +1379,8 @@ main (int argc, const char *argv[])
                      double newstemp = thisstemp;
                      char newf_rate = thisf_rate;
                      int newmode = thismode;
-                     doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow, atempset, atemp, thisdt[1]);
+                     doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow,
+                             atempset + mqttperiod < now ? now : atempset, atemp, thisdt[1]);
                      if (newstemp)
                      {          // Rounding temp to 0.5C with error dither
                         static double dither = 0;
