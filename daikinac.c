@@ -1379,8 +1379,7 @@ main (int argc, const char *argv[])
                      double newstemp = thisstemp;
                      char newf_rate = thisf_rate;
                      int newmode = thismode;
-                     doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow,
-                             atempset + mqttperiod < now ? now : atempset, atemp, thisdt[1]);
+                     doauto (&newstemp, &newf_rate, &newmode, thispow, thiscmpfreq, thismompow, now, atemp, thisdt[1]);
                      if (newstemp)
                      {          // Rounding temp to 0.5C with error dither
                         static double dither = 0;
