@@ -65,6 +65,7 @@ double driftrate = 0.01;        // Per sample slow drift allowed
 double driftback = 0.999;       // slow return to 0
 int cmpfreqlow = 10;            // Low rate allowed
 int mqttperiod = 60;            // Logging period
+int mqttmaxdelay=3600;		// Max delay reporting
 int resetlag = 900;             // Wait for any major change to stabilise
 int maxsamples = 60;            // For average logic
 int minsamples = 5;             // For average logic
@@ -452,6 +453,7 @@ main (int argc, const char *argv[])
          { "mqtt-cmnd", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqttcmnd, 0, "MQTT cmnd prefix", "prefix"},
          { "mqtt-tele", 0, POPT_ARG_STRING | POPT_ARGFLAG_SHOW_DEFAULT, &mqtttele, 0, "MQTT tele prefix", "prefix"},
          { "mqtt-period", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttperiod, 0, "MQTT reporting interval", "seconds"},
+         { "mqtt-max-delay", 0, POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &mqttmaxdelay, 0, "MQTT reporting max delay", "seconds"},
          { "mqtt-debug", 0, POPT_ARG_NONE, &mqttdebug, 0, "Debug"},
 	 { "mqtt-atemp", 0, POPT_ARG_STRING , &mqttatemp, 0, "MQTT topic to subscribe for setting atemp", "topic"},
 	 { "mqtt-otemp", 0, POPT_ARG_STRING , &mqttotemp, 0, "MQTT topic to subscribe for setting otemp", "topic"},
@@ -1354,19 +1356,19 @@ main (int argc, const char *argv[])
                if (getstatus ())
                {
                   updatestatus ();
-                  if (atempset && atempset < now - mqttperiod * 5)
+                  if (atempset && atempset < now - mqttmaxdelay)
                   {
                      atempset = 0;
                      if (debug)
                         warnx ("No temp set, stopping control");
                   }
-                  if (co2set && co2set < now - mqttperiod * 5)
+                  if (co2set && co2set < now - mqttmaxdelay)
                   {
                      co2set = 0;
                      if (debug)
                         warnx ("No CO2 set");
                   }
-                  if (rhset && rhset < now - mqttperiod * 5)
+                  if (rhset && rhset < now - mqttmaxdelay)
                   {
                      rhset = 0;
                      if (debug)
