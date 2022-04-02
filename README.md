@@ -1,4 +1,6 @@
-Control system for Daikin WiFi connected air conditioning units.
+# Control system for Daikin WiFi connected air conditioning units.
+
+# NOTE THIS IS MOSTLY OBSOLETE AS DAIKIN CHANGED TO CLOUD STUFF.
 
 Simple command line to update settings, and get info.
 
