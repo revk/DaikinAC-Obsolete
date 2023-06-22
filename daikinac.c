@@ -423,8 +423,8 @@ main (int argc, const char *argv[])
       modefan = 0,
       dolock = 0;
    int retries = 5;
+   poptContext optCon;          // context for parsing command-line options
    {                            // POPT
-      poptContext optCon;       // context for parsing command-line options
       const struct poptOption optionsTable[] = {
 #define	c(x,t,v)	{#x, 0, POPT_ARG_STRING, &set##x, 0, #t, #v},
          controlfields
@@ -1495,7 +1495,6 @@ main (int argc, const char *argv[])
          freestatus ();
       }
 
-      poptFreeContext (optCon);
 #ifdef SQLLIB
       if (db)
       {
@@ -1513,5 +1512,6 @@ main (int argc, const char *argv[])
 #endif
    }
 
+   poptFreeContext (optCon);
    return 0;
 }
